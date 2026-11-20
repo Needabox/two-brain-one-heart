@@ -1,4 +1,4 @@
-export type SignalingMode = 'local-dev-relay' | 'broadcast-channel' | 'manual-p2p';
+export type SignalingMode = 'peerjs' | 'local-dev-relay' | 'broadcast-channel';
 
 export interface SignalingModeInfo {
   mode: SignalingMode;

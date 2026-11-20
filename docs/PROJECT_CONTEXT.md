@@ -39,7 +39,7 @@ Inspected workspace root: `/Users/muhammadrafli/Coding/tailwind/two-brain-one-he
   5. Mixed Challenge (Hard — combines Secret Language + Lost Together)
 - Private room creation & join via short room code, lobby with Ready toggles, host level selection, and connection status indicators.
 - Real-time P2P multiplayer synchronization over WebRTC `RTCDataChannel` with 100% pure frontend options:
-  - Cross-device pure static hosting (Vercel): `Direct P2P (Manual Invite/Reply Code)` exchanging compressed SDP+ICE bundles via chat — zero backend, zero database, zero Supabase.
+  - Cross-device pure static hosting (Vercel): `PeerJSTransport` using PeerJS Cloud (`0.peerjs.com`) WebSocket brokering for 6-character room codes across separate devices — zero custom backend, zero database, zero Supabase.
   - Same-browser two-tab play: `BroadcastChannelSignalingProvider`.
   - Local development: `LocalDevHttpSignalingProvider` (Vite dev server SSE+POST relay for cross-browser / LAN testing with zero external credentials).
 - Shared progression: 1–3 stars per level, XP, sequential level unlocks, replay without star loss, and idempotent reward grants.

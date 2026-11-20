@@ -120,14 +120,14 @@ export function SettingsHelpScreen({
           </div>
           <p className="text-xs leading-relaxed text-[#6D5880]">
             Active mode:{' '}
-            <strong>{signalingInfo?.label ?? 'Auto-detected on room start'}</strong>.{' '}
+            <strong>{signalingInfo?.label ?? 'PeerJS Cloud P2P / Local Dev Relay'}</strong>.{' '}
             {signalingInfo?.description ??
-              'Runs 100% pure frontend on static hosting (Vercel) using Direct P2P Invite/Reply codes across devices or BroadcastChannel across same-browser tabs. Local dev adds a built-in /__signal relay.'}
+              'On Vercel/production, rooms pair across separate devices via PeerJS Cloud (0.peerjs.com) + WebRTC DataChannels using just a 6-character code — no backend or database required.'}
           </p>
           <p className="text-xs leading-relaxed text-[#6D5880]">
-            Uses public STUN by default for direct peer discovery. Optional{' '}
-            <code>VITE_ICE_SERVERS</code> with a TURN server can be added at build time if
-            playing across strict cellular/corporate NATs.
+            Uses public STUN by default. If strict mobile/corporate Symmetric NATs block
+            direct P2P, optionally configure a TURN server via <code>VITE_ICE_SERVERS</code>{' '}
+            or custom PeerServer via <code>VITE_PEER_HOST</code>.
           </p>
         </div>
 

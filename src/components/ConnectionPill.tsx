@@ -1,5 +1,5 @@
 import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
-import type { TransportStatus } from '../multiplayer/webrtc/WebRTCTransport';
+import type { TransportStatus } from '../multiplayer/GameTransport';
 import type { SignalingModeInfo } from '../multiplayer/signaling/SignalingProvider';
 
 interface ConnectionPillProps {

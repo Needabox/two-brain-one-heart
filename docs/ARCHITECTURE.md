@@ -60,11 +60,11 @@ All signaling adapters implement `SignalingProvider`:
 - `onPeerStatus(handler): () => void`
 - `getModeInfo(): { mode, label, supportsCrossDevice, notes }`
 
-### Implemented Pure Frontend Adapters
-1. **`Direct P2P Manual Invite/Reply` (`mode: 'manual-p2p'`, default on static Vercel builds)**
-   - Uses `manualCodec.ts` (`deflate-raw` + base64url + Zod validation) to bundle WebRTC SDP Offer/Answer together with gathered STUN ICE candidates into a copy-pasteable `TBOH1:...` code.
-   - Enables real two-device multiplayer on static hosting (Vercel) with zero backend, zero database, and zero external signaling accounts.
-   - Note: Direct P2P relies on public STUN (`stun.l.google.com:19302`) and can still be blocked by strict symmetric NATs unless an optional `VITE_ICE_SERVERS` TURN relay is configured.
+### Implemented Pure Frontend Transports & Adapters
+1. **`PeerJSTransport` (`mode: 'peerjs'`, default on static Vercel builds)**
+   - Uses `peerjs` (`0.peerjs.com:443` by default, or custom `VITE_PEER_HOST` / `VITE_PEER_PORT` / `VITE_PEER_PATH`) to map deterministic room peer IDs (`tboh-v1-<ROOMCODE>`) so two remote players connect using just a 6-character room code.
+   - Enforces the 2-player room limit via connection metadata, validates every message through the same Zod `MultiplayerEnvelopeSchema`, and passes `VITE_ICE_SERVERS` (default Google + Cloudflare STUN) into WebRTC config.
+   - Note: Uses the public PeerJS Cloud signaling broker (`0.peerjs.com`); restrictive symmetric NATs/firewalls may still require a TURN server in `VITE_ICE_SERVERS`.
 2. **`LocalDevHttpSignalingProvider` (`mode: 'local-dev-relay'`)**
    - Activated automatically during `npm run dev` when `/__signal/health` returns JSON `{ ok: true, mode: 'local-dev-relay' }`.
    - Uses a lightweight Vite middleware (`vite-plugin-local-signal.ts`) exposing HTTP `POST` + `EventSource` SSE streams for fast 6-char room code pairing across separate browsers & LAN devices locally.
@@ -73,7 +73,8 @@ All signaling adapters implement `SignalingProvider`:
 
 ### Environment Variables (All Optional)
 - `VITE_ICE_SERVERS` — Optional JSON array of `RTCIceServer` objects (`stun:` and optional `turn:` entries for restrictive NATs)
-- `VITE_SIGNALING_MODE` — Optional override (`auto` | `manual-p2p` | `local-relay` | `broadcast`)
+- `VITE_PEER_HOST` / `VITE_PEER_PORT` / `VITE_PEER_PATH` — Optional self-hosted PeerServer override
+- `VITE_SIGNALING_MODE` — Optional override (`auto` | `peerjs` | `local-relay` | `broadcast`)
 
 ---
 

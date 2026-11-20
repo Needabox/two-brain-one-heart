@@ -6,31 +6,31 @@ import type {
   SignalingProvider,
 } from './SignalingProvider';
 
-export class ManualP2PSignalingInfoProvider implements SignalingProvider {
+export class PeerJSSignalingInfoProvider implements SignalingProvider {
   getModeInfo(): SignalingModeInfo {
     return {
-      mode: 'manual-p2p',
-      label: 'Direct P2P (Zero Server)',
+      mode: 'peerjs',
+      label: 'PeerJS Cloud P2P',
       supportsCrossDevice: true,
       description:
-        'Pure frontend WebRTC using copy-paste Invite & Reply codes. Works across 2 devices on Vercel with no backend or database (note: restrictive cellular NATs may still need STUN/TURN).',
+        'Uses PeerJS Cloud WebSocket broker (0.peerjs.com) + WebRTC DataChannels for 6-character room codes across separate devices without any backend server.',
     };
   }
 
   async createRoom(): Promise<void> {
-    // Handled via direct WebRTC manual offer generation
+    // Handled directly by PeerJSTransport
   }
 
   async joinRoom(): Promise<JoinRoomResult> {
-    return { hostId: 'manual-host' };
+    return { hostId: 'peerjs-host' };
   }
 
   async sendSignal(): Promise<void> {
-    // No automated signaling relay in manual-p2p mode
+    // Handled internally by PeerJS
   }
 
   async leaveRoom(): Promise<void> {
-    // Nothing to clean up on external server
+    // Handled by PeerJSTransport.dispose()
   }
 
   onSignal(): () => void {
@@ -46,7 +46,11 @@ export class ManualP2PSignalingInfoProvider implements SignalingProvider {
   }
 }
 
-export type StaticConnectionPreference = 'manual-p2p' | 'broadcast-channel';
+export type ConnectionModePreference =
+  | 'auto'
+  | 'peerjs'
+  | 'local-dev-relay'
+  | 'broadcast-channel';
 
 export async function detectLocalDevRelayAvailable(): Promise<boolean> {
   try {
@@ -63,24 +67,22 @@ export async function detectLocalDevRelayAvailable(): Promise<boolean> {
 }
 
 export async function createSignalingProvider(
-  staticPreference: StaticConnectionPreference = 'manual-p2p',
+  preference: ConnectionModePreference = 'auto',
 ): Promise<SignalingProvider> {
   const modeOverride = (import.meta.env.VITE_SIGNALING_MODE ?? 'auto').toString().trim();
 
-  if (modeOverride === 'broadcast') {
+  if (preference === 'broadcast-channel' || modeOverride === 'broadcast') {
     return new BroadcastChannelSignalingProvider();
   }
-  if (modeOverride === 'manual-p2p') {
-    return new ManualP2PSignalingInfoProvider();
+  if (preference === 'peerjs' || modeOverride === 'peerjs') {
+    return new PeerJSSignalingInfoProvider();
   }
 
-  if (modeOverride === 'local-relay' || modeOverride === 'auto') {
+  if (preference === 'local-dev-relay' || preference === 'auto' || modeOverride === 'local-relay') {
     if (await detectLocalDevRelayAvailable()) {
       return new LocalDevHttpSignalingProvider();
     }
   }
 
-  return staticPreference === 'broadcast-channel'
-    ? new BroadcastChannelSignalingProvider()
-    : new ManualP2PSignalingInfoProvider();
+  return new PeerJSSignalingInfoProvider();
 }

@@ -2,7 +2,7 @@
 
 **Two minds. Different clues. One mission.**
 
-A pure-frontend, mobile-first, two-player cooperative puzzle adventure built with React, TypeScript, Vite, Tailwind CSS, Framer Motion, Zod, and WebRTC DataChannels — deployable directly to Vercel with zero database or backend required.
+A pure-frontend, mobile-first, two-player cooperative puzzle adventure built with React, TypeScript, Vite, Tailwind CSS, Framer Motion, Zod, PeerJS, and WebRTC DataChannels — deployable directly to Vercel with zero database or custom backend required.
 
 ---
 
@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-When running `npm run dev`, Vite includes a lightweight local signaling relay (`/__signal` via `vite-plugin-local-signal.ts`) so two separate browsers (e.g., Chrome + Safari, or a phone on the same Wi-Fi network) can pair with a 6-character code automatically.
+When running `npm run dev`, Vite includes a lightweight local signaling relay (`/__signal` via `vite-plugin-local-signal.ts`) so two separate browsers (e.g., Chrome + Safari, or a phone on the same Wi-Fi network) can pair with a 6-character code automatically, or switch to **Online 2 Devices (PeerJS)** to test over PeerJS Cloud.
 
 ### Scripts
 
@@ -40,20 +40,20 @@ When running `npm run dev`, Vite includes a lightweight local signaling relay (`
 
 ---
 
-## Pure Frontend Deployment on Vercel (Zero Backend / Zero Supabase)
+## Pure Frontend Deployment on Vercel (PeerJS Cloud)
 
 `vercel.json` is pre-configured for static Vite SPA deployment (`npm run build` → `dist/`).
 
 1. Push to GitHub/GitLab/Bitbucket and import into **Vercel** (Framework Preset: **Vite**).
-2. Click **Deploy** — **zero environment variables or database accounts are required**.
+2. Click **Deploy** — **zero backend servers, databases, or required environment variables**.
 
-### How Two-Player Connections Work on Static Hosting
-- **2 Devices (Direct P2P — Default on Vercel):**
-  1. **Host** taps **Play • Create Room** → **Generate P2P Invite Code**, copies the `TBOH1:...` Invite Code, and sends it to their partner via chat.
-  2. **Partner** opens the Vercel URL → **Join Partner's Room** → pastes the Invite Code → taps **Generate Reply Code**, and sends the `TBOH1:...` Reply Code back.
-  3. **Host** pastes the Reply Code and taps **Connect Partner** → direct WebRTC `RTCDataChannel` connects for the entire session.
-- **1 Browser (2 Tabs):** Switch the mode toggle to **1 Browser (2 Tabs)** to pair instantly via `BroadcastChannel` using a short 6-character room code.
-- **NAT / Firewall Note:** Direct P2P uses public STUN servers (`stun.l.google.com:19302`) by default. If either player is on a restrictive corporate or symmetric mobile NAT that blocks direct P2P, you can optionally configure `VITE_ICE_SERVERS` with a TURN relay in Vercel Environment Variables.
+### How Two-Player Connections Work on Vercel
+- **Online 2 Devices (PeerJS — Default on Vercel):**
+  1. Host clicks **Play • Create Room** → **Generate Room Code** and shares the 6-character code (e.g., `HRT429`).
+  2. Partner anywhere opens the Vercel URL → **Join Partner's Room** → enters the 6-character code → clicks **Join Cozy Room**.
+  3. PeerJS Cloud (`0.peerjs.com`) brokers the initial WebRTC handshake, and all gameplay syncs over WebRTC `DataConnection`.
+- **1 Browser (2 Tabs):** Toggle to **1 Browser (2 Tabs)** for instant offline testing across tabs in the same browser via `BroadcastChannel`.
+- **NAT / Firewall Note:** Direct WebRTC uses public STUN (`stun.l.google.com:19302`, `stun.cloudflare.com:3478`). If restrictive cellular/corporate Symmetric NATs block direct P2P, optionally set `VITE_ICE_SERVERS` with a TURN server in Vercel Environment Variables (and/or `VITE_PEER_HOST` for a self-hosted PeerServer).
 
 ---
 
@@ -61,7 +61,7 @@ When running `npm run dev`, Vite includes a lightweight local signaling relay (`
 
 - `docs/PROJECT_CONTEXT.md` — Repository snapshot, MVP scope, security/infrastructure boundaries
 - `docs/GAME_DESIGN.md` — Core loop, canonical characters, 5 levels, scoring/XP/unlock rules
-- `docs/ARCHITECTURE.md` — Directory structure, pure FE WebRTC/signaling adapters, Zod protocol v1
+- `docs/ARCHITECTURE.md` — Directory structure, PeerJS/WebRTC/Signaling adapters, Zod protocol v1
 - `docs/ASSET_GUIDE.md` — Palette tokens and `public/assets/` inventory
 - `docs/IMPLEMENTATION_PLAN.md` — Phased execution log
 - `docs/TEST_PLAN.md` — Automated test matrix and two-browser verification checklist

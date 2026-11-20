@@ -6,7 +6,7 @@ describe('createSignalingProvider', () => {
     vi.unstubAllGlobals();
   });
 
-  it('ignores HTML 200 SPA fallback on /__signal/health and selects manual-p2p or broadcast-channel', async () => {
+  it('ignores HTML 200 SPA fallback on /__signal/health and selects peerjs or broadcast-channel', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -17,9 +17,9 @@ describe('createSignalingProvider', () => {
       ),
     );
 
-    const directP2P = await createSignalingProvider('manual-p2p');
-    expect(directP2P.getModeInfo().mode).toBe('manual-p2p');
-    directP2P.dispose();
+    const peerjsProvider = await createSignalingProvider('auto');
+    expect(peerjsProvider.getModeInfo().mode).toBe('peerjs');
+    peerjsProvider.dispose();
 
     const broadcast = await createSignalingProvider('broadcast-channel');
     expect(broadcast.getModeInfo().mode).toBe('broadcast-channel');
@@ -37,7 +37,7 @@ describe('createSignalingProvider', () => {
       ),
     );
 
-    const provider = await createSignalingProvider();
+    const provider = await createSignalingProvider('auto');
     expect(provider.getModeInfo().mode).toBe('local-dev-relay');
     provider.dispose();
   });

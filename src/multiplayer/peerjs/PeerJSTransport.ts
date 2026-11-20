@@ -1,0 +1,404 @@
+import Peer, { type DataConnection, type PeerJSOption } from 'peerjs';
+import type { GameTransport, TransportStatus } from '../GameTransport';
+import {
+  buildEnvelope,
+  EventDeduplicator,
+  parseMultiplayerEnvelope,
+  type EventPayload,
+  type MultiplayerEnvelope,
+} from '../protocol';
+import { parseConfiguredIceServers } from '../webrtc/WebRTCTransport';
+
+export function buildHostPeerId(roomCode: string): string {
+  return `tboh-v1-${roomCode.trim().toUpperCase()}`;
+}
+
+export function buildPeerJsOptions(): PeerJSOption {
+  const customHost = (import.meta.env.VITE_PEER_HOST ?? '').toString().trim();
+  const customPortRaw = (import.meta.env.VITE_PEER_PORT ?? '').toString().trim();
+  const customPath = (import.meta.env.VITE_PEER_PATH ?? '').toString().trim();
+
+  const opts: PeerJSOption = {
+    config: {
+      iceServers: parseConfiguredIceServers(),
+    },
+    debug: 0,
+  };
+
+  if (customHost) {
+    opts.host = customHost;
+    opts.secure = true;
+    if (customPortRaw) {
+      const parsedPort = Number(customPortRaw);
+      if (Number.isFinite(parsedPort) && parsedPort > 0) {
+        opts.port = parsedPort;
+      }
+    }
+    if (customPath) {
+      opts.path = customPath;
+    }
+  }
+
+  return opts;
+}
+
+export interface PeerJSTransportOptions {
+  roomCode: string;
+  selfPeerId: string;
+  role: 'host' | 'guest';
+  onStatusChange: (status: TransportStatus, detail?: string) => void;
+  onEnvelope: (envelope: MultiplayerEnvelope) => void;
+}
+
+export class PeerJSTransport implements GameTransport {
+  private readonly opts: PeerJSTransportOptions;
+  private peer: Peer | null = null;
+  private conn: DataConnection | null = null;
+  private activeGuestPlayerId: string | null = null;
+  private outboundQueue: MultiplayerEnvelope[] = [];
+  private seq = 1;
+  private readonly dedup = new EventDeduplicator(500);
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+  private lastPongAt = 0;
+  private disposed = false;
+
+  constructor(opts: PeerJSTransportOptions) {
+    this.opts = opts;
+  }
+
+  public startWaiting(): void {
+    this.opts.onStatusChange(
+      this.opts.role === 'host' ? 'waiting-for-partner' : 'connecting',
+    );
+  }
+
+  public async createAsHost(): Promise<void> {
+    if (this.disposed) return;
+    const hostPeerId = buildHostPeerId(this.opts.roomCode);
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const peer = new Peer(hostPeerId, buildPeerJsOptions());
+      this.peer = peer;
+
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Could not reach PeerJS Cloud broker. Check your internet connection.'));
+      }, 10_000);
+
+      peer.on('open', () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        this.opts.onStatusChange('waiting-for-partner', 'Room live on PeerJS Cloud. Waiting for partner...');
+        resolve();
+      });
+
+      peer.on('connection', (incomingConn) => {
+        this.handleIncomingHostConnection(incomingConn);
+      });
+
+      peer.on('disconnected', () => {
+        if (!this.disposed && !peer.destroyed) {
+          peer.reconnect();
+        }
+      });
+
+      peer.on('error', (err) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          if (err.type === 'unavailable-id') {
+            reject(new Error('That room code is temporarily in use. Please try again.'));
+          } else {
+            reject(new Error(err.message || 'PeerJS host registration failed.'));
+          }
+          return;
+        }
+        if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
+          this.opts.onStatusChange('reconnecting', 'PeerJS signaling connection interrupted...');
+        }
+      });
+    });
+  }
+
+  public async connectAsGuest(): Promise<void> {
+    if (this.disposed) return;
+    const hostPeerId = buildHostPeerId(this.opts.roomCode);
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const peer = new Peer(`tboh-g-${this.opts.selfPeerId.slice(0, 12)}`, buildPeerJsOptions());
+      this.peer = peer;
+
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(
+          new Error(
+            'Connection timed out. Check the room code, or if on strict mobile NAT/firewall try Wi-Fi or a TURN server.',
+          ),
+        );
+      }, 15_000);
+
+      const failOnce = (message: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(new Error(message));
+      };
+
+      peer.on('open', () => {
+        if (this.disposed) return;
+        this.opts.onStatusChange('connecting', 'Connecting to partner via PeerJS...');
+        const conn = peer.connect(hostPeerId, {
+          reliable: true,
+          serialization: 'raw',
+          metadata: { playerId: this.opts.selfPeerId },
+        });
+        this.wireDataConnection(conn, () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+
+      peer.on('disconnected', () => {
+        if (!this.disposed && !peer.destroyed) {
+          peer.reconnect();
+        }
+      });
+
+      peer.on('error', (err) => {
+        if (err.type === 'peer-unavailable') {
+          failOnce('Room not found. Double-check the 6-character code or ask your partner to open the room.');
+        } else if (!settled) {
+          failOnce(err.message || 'Could not connect to PeerJS room.');
+        }
+      });
+    });
+  }
+
+  private handleIncomingHostConnection(incomingConn: DataConnection): void {
+    if (this.disposed) {
+      incomingConn.close();
+      return;
+    }
+
+    const meta = incomingConn.metadata as { playerId?: string } | undefined;
+    const incomingPlayerId = meta?.playerId ?? incomingConn.peer;
+
+    if (
+      this.conn &&
+      this.conn.open &&
+      this.activeGuestPlayerId &&
+      this.activeGuestPlayerId !== incomingPlayerId
+    ) {
+      // Room already full (2 players max)
+      incomingConn.on('open', () => {
+        const leaveEnv = buildEnvelope(
+          this.opts.roomCode,
+          this.opts.selfPeerId,
+          this.seq++,
+          'ROOM_LEAVE',
+          { reason: 'This cozy room already has 2 players.' },
+        );
+        void incomingConn.send(JSON.stringify(leaveEnv));
+        setTimeout(() => incomingConn.close(), 120);
+      });
+      return;
+    }
+
+    if (this.conn && this.conn !== incomingConn) {
+      this.teardownConnectionOnly();
+    }
+
+    this.activeGuestPlayerId = incomingPlayerId;
+    this.wireDataConnection(incomingConn);
+  }
+
+  private wireDataConnection(conn: DataConnection, onFirstOpen?: () => void): void {
+    this.conn = conn;
+
+    conn.on('open', () => {
+      if (this.disposed) return;
+      this.reconnectAttempts = 0;
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      this.lastPongAt = Date.now();
+      this.opts.onStatusChange('connected');
+      this.flushOutboundQueue();
+      this.startHeartbeat();
+      onFirstOpen?.();
+    });
+
+    conn.on('data', (rawData) => {
+      if (this.disposed) return;
+      try {
+        const parsedJson =
+          typeof rawData === 'string' ? (JSON.parse(rawData) as unknown) : rawData;
+        const envelope = parseMultiplayerEnvelope(parsedJson);
+        if (!envelope) return;
+        if (envelope.roomId !== this.opts.roomCode) return;
+        if (this.dedup.hasSeenOrMark(envelope.eventId)) return;
+
+        if (envelope.type === 'PING') {
+          this.send('PONG', { echoedSentAt: envelope.payload.sentAt });
+          return;
+        }
+        if (envelope.type === 'PONG') {
+          this.lastPongAt = Date.now();
+          return;
+        }
+
+        this.opts.onEnvelope(envelope);
+      } catch {
+        // Ignore malformed messages
+      }
+    });
+
+    conn.on('iceStateChanged', (state) => {
+      if (this.disposed) return;
+      if (state === 'failed') {
+        this.opts.onStatusChange(
+          'error',
+          'WebRTC NAT traversal failed (strict firewall/CGNAT). Try Wi-Fi or configure a TURN server in VITE_ICE_SERVERS.',
+        );
+      }
+    });
+
+    conn.on('close', () => {
+      if (this.disposed) return;
+      this.stopHeartbeat();
+      this.opts.onStatusChange('reconnecting', 'Partner connection closed. Waiting to reconnect...');
+      if (this.opts.role === 'guest') {
+        this.scheduleGuestReconnect();
+      }
+    });
+
+    conn.on('error', () => {
+      if (this.disposed) return;
+      this.opts.onStatusChange('reconnecting', 'Temporary peer channel issue...');
+    });
+  }
+
+  private scheduleGuestReconnect(): void {
+    if (this.disposed || this.reconnectTimer || this.reconnectAttempts >= 8) {
+      if (this.reconnectAttempts >= 8) {
+        this.opts.onStatusChange('disconnected', 'Could not reach host after several attempts.');
+      }
+      return;
+    }
+    this.reconnectAttempts += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.disposed || !this.peer || this.peer.destroyed) return;
+      const conn = this.peer.connect(buildHostPeerId(this.opts.roomCode), {
+        reliable: true,
+        serialization: 'raw',
+        metadata: { playerId: this.opts.selfPeerId },
+      });
+      this.wireDataConnection(conn);
+    }, 2500);
+  }
+
+  public send<T extends MultiplayerEnvelope['type']>(
+    type: T,
+    payload: EventPayload<T>,
+  ): MultiplayerEnvelope {
+    const envelope = buildEnvelope(
+      this.opts.roomCode,
+      this.opts.selfPeerId,
+      this.seq++,
+      type,
+      payload,
+    );
+
+    if (this.conn && this.conn.open) {
+      void this.conn.send(JSON.stringify(envelope));
+    } else if (type !== 'PING' && type !== 'PONG') {
+      this.outboundQueue.push(envelope);
+      if (this.outboundQueue.length > 50) {
+        this.outboundQueue.shift();
+      }
+    }
+
+    return envelope;
+  }
+
+  private flushOutboundQueue(): void {
+    if (!this.conn || !this.conn.open) return;
+    while (this.outboundQueue.length > 0) {
+      const env = this.outboundQueue.shift();
+      if (env) {
+        void this.conn.send(JSON.stringify(env));
+      }
+    }
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.lastPongAt = Date.now();
+    this.pingTimer = setInterval(() => {
+      if (this.disposed) return;
+      if (this.conn && this.conn.open) {
+        this.send('PING', { sentAt: Date.now() });
+      }
+      const silenceMs = Date.now() - this.lastPongAt;
+      if (silenceMs > 22_000) {
+        this.opts.onStatusChange('disconnected', 'Partner timed out.');
+      } else if (silenceMs > 10_000) {
+        this.opts.onStatusChange('reconnecting', 'Waiting for partner heartbeat...');
+      }
+    }, 4000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+  }
+
+  private teardownConnectionOnly(): void {
+    this.stopHeartbeat();
+    if (this.conn) {
+      this.conn.removeAllListeners();
+      try {
+        this.conn.close();
+      } catch {
+        // ignore
+      }
+      this.conn = null;
+    }
+  }
+
+  public isConnected(): boolean {
+    return Boolean(this.conn?.open);
+  }
+
+  public dispose(): void {
+    this.disposed = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.teardownConnectionOnly();
+    if (this.peer) {
+      this.peer.removeAllListeners();
+      try {
+        this.peer.destroy();
+      } catch {
+        // ignore
+      }
+      this.peer = null;
+    }
+    this.outboundQueue = [];
+  }
+}

@@ -1,3 +1,4 @@
+import type { GameTransport, TransportStatus } from '../GameTransport';
 import {
   buildEnvelope,
   EventDeduplicator,
@@ -10,53 +11,8 @@ import type {
   SignalingProvider,
   WebRtcSignalPayload,
 } from '../signaling/SignalingProvider';
-import {
-  decodeManualSignalBundle,
-  encodeManualSignalBundle,
-} from './manualCodec';
 
-function waitForIceGatheringComplete(
-  pc: RTCPeerConnection,
-  timeoutMs: number = 5000,
-): Promise<void> {
-  if (pc.iceGatheringState === 'complete') {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    let settleEarlyTimer: ReturnType<typeof setTimeout> | null = null;
-    const finish = () => {
-      clearTimeout(timer);
-      if (settleEarlyTimer) clearTimeout(settleEarlyTimer);
-      pc.removeEventListener('icegatheringstatechange', onStateChange);
-      pc.removeEventListener('icecandidate', onCandidate);
-      resolve();
-    };
-    const onStateChange = () => {
-      if (pc.iceGatheringState === 'complete') {
-        finish();
-      }
-    };
-    const onCandidate = (evt: RTCPeerConnectionIceEvent) => {
-      const cand = evt.candidate?.candidate ?? '';
-      if ((cand.includes(' typ srflx ') || cand.includes(' typ relay ')) && !settleEarlyTimer) {
-        // Give 700ms for any secondary/TURN candidates, then proceed fast
-        settleEarlyTimer = setTimeout(finish, 700);
-      }
-    };
-    const timer = setTimeout(finish, timeoutMs);
-    pc.addEventListener('icegatheringstatechange', onStateChange);
-    pc.addEventListener('icecandidate', onCandidate);
-  });
-}
-
-export type TransportStatus =
-  | 'idle'
-  | 'waiting-for-partner'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'disconnected'
-  | 'error';
+export type { TransportStatus };
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -88,7 +44,7 @@ export interface WebRTCTransportOptions {
   onPeerPresence?: (event: PeerPresenceEvent) => void;
 }
 
-export class WebRTCTransport {
+export class WebRTCTransport implements GameTransport {
   private readonly opts: WebRTCTransportOptions;
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
@@ -146,7 +102,6 @@ export class WebRTCTransport {
       if (this.opts.role === 'host') {
         void this.createOfferConnection();
       } else {
-        // Host came back (e.g., after refresh): ask host to pair
         this.opts.onStatusChange('reconnecting', 'Partner returned, pairing...');
         void this.opts.signaling.sendSignal(
           this.opts.roomCode,
@@ -178,6 +133,7 @@ export class WebRTCTransport {
     if (this.pc) {
       this.pc.onicecandidate = null;
       this.pc.onconnectionstatechange = null;
+      this.pc.oniceconnectionstatechange = null;
       this.pc.ondatachannel = null;
       try {
         this.pc.close();
@@ -212,17 +168,7 @@ export class WebRTCTransport {
       } else if (pc.connectionState === 'failed') {
         this.opts.onStatusChange(
           'error',
-          'Direct P2P connection failed (strict NAT/firewall). Try Wi-Fi or add a TURN server in VITE_ICE_SERVERS.',
-        );
-      }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      if (this.disposed) return;
-      if (pc.iceConnectionState === 'failed') {
-        this.opts.onStatusChange(
-          'error',
-          'Direct P2P ICE failed (strict NAT/firewall). Try Wi-Fi or add a TURN server in VITE_ICE_SERVERS.',
+          'Peer connection failed (strict NAT/firewall). Try Wi-Fi or add a TURN server in VITE_ICE_SERVERS.',
         );
       }
     };
@@ -381,111 +327,6 @@ export class WebRTCTransport {
         // Ignore failed candidate
       }
     }
-  }
-
-  // ---- Pure Frontend Zero-Server Manual Invite/Reply P2P Methods ----
-
-  public async createManualOfferCode(): Promise<string> {
-    this.opts.onStatusChange('waiting-for-partner', 'Generating P2P invite code...');
-    const pc = this.createBasePeerConnection();
-    // All ICE candidates will be gathered into localDescription before encoding
-    pc.onicecandidate = null;
-    const dc = pc.createDataChannel('tboh-game', { ordered: true });
-    this.wireDataChannel(dc);
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await waitForIceGatheringComplete(pc, 5000);
-
-    if (!pc.localDescription?.sdp) {
-      throw new Error('Could not generate WebRTC invite SDP.');
-    }
-
-    const hasPublicCandidate =
-      pc.localDescription.sdp.includes(' typ srflx ') ||
-      pc.localDescription.sdp.includes(' typ relay ');
-    this.opts.onStatusChange(
-      'waiting-for-partner',
-      hasPublicCandidate
-        ? 'Public network candidate ready! Send the invite code to your partner, then paste their reply code.'
-        : 'Warning: STUN could not discover a public IP on this network. Faraway peers may not connect without Wi-Fi or a TURN server.',
-    );
-    return encodeManualSignalBundle({
-      v: 1,
-      r: this.opts.roomCode,
-      t: 'offer',
-      sdp: pc.localDescription.sdp,
-    });
-  }
-
-  public async acceptManualReplyCode(replyCode: string): Promise<void> {
-    if (!this.pc) {
-      throw new Error('No active invite session found. Create a room invite first.');
-    }
-    const bundle = await decodeManualSignalBundle(replyCode);
-    if (bundle.t !== 'answer') {
-      throw new Error('That looks like an Invite code — ask your partner for their Reply code!');
-    }
-    if (bundle.r !== this.opts.roomCode) {
-      throw new Error(`Reply code is for room ${bundle.r}, expected ${this.opts.roomCode}.`);
-    }
-    this.opts.onStatusChange('connecting', 'Linking directly with partner...');
-    await this.pc.setRemoteDescription(
-      new RTCSessionDescription({ type: 'answer', sdp: bundle.sdp }),
-    );
-    setTimeout(() => {
-      if (!this.disposed && !this.isConnected() && this.pc?.connectionState !== 'failed') {
-        this.opts.onStatusChange(
-          'connecting',
-          'Still negotiating NAT/firewall… If stuck, one network likely uses Symmetric NAT/CGNAT and requires a TURN server (VITE_ICE_SERVERS) or switching to Wi-Fi.',
-        );
-      }
-    }, 10_000);
-  }
-
-  public async acceptManualInviteAndCreateReply(
-    inviteCode: string,
-  ): Promise<{ roomCode: string; replyCode: string }> {
-    const bundle = await decodeManualSignalBundle(inviteCode);
-    if (bundle.t !== 'offer') {
-      throw new Error('That looks like a Reply code — paste the Host Invite code here!');
-    }
-
-    this.opts.onStatusChange('connecting', 'Generating your reply code...');
-    const pc = this.createBasePeerConnection();
-    pc.onicecandidate = null;
-    pc.ondatachannel = (evt) => {
-      this.wireDataChannel(evt.channel);
-    };
-
-    await pc.setRemoteDescription(
-      new RTCSessionDescription({ type: 'offer', sdp: bundle.sdp }),
-    );
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    await waitForIceGatheringComplete(pc, 5000);
-
-    if (!pc.localDescription?.sdp) {
-      throw new Error('Could not generate WebRTC reply SDP.');
-    }
-
-    const replyCode = await encodeManualSignalBundle({
-      v: 1,
-      r: bundle.r,
-      t: 'answer',
-      sdp: pc.localDescription.sdp,
-    });
-
-    const hasPublicCandidate =
-      pc.localDescription.sdp.includes(' typ srflx ') ||
-      pc.localDescription.sdp.includes(' typ relay ');
-    this.opts.onStatusChange(
-      'connecting',
-      hasPublicCandidate
-        ? 'Send this reply code back to Host to finish connecting!'
-        : 'Warning: STUN could not discover a public IP on this network. Faraway peers may not connect without Wi-Fi or a TURN server.',
-    );
-    return { roomCode: bundle.r, replyCode };
   }
 
   public send<T extends MultiplayerEnvelope['type']>(

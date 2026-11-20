@@ -42,21 +42,19 @@ export function App() {
             preferredCharacter={room.settings.preferredCharacter}
             selectedCosmetic={room.progression.selectedCosmetic}
             roomCode={room.roomCode}
-            manualInviteCode={room.manualInviteCode}
             localRelayAvailable={room.localRelayAvailable}
-            staticPreference={room.staticPreference}
+            connectionPreference={room.connectionPreference}
             roomBusy={room.roomBusy}
             roomError={room.roomError}
             transportStatus={room.transportStatus}
             transportDetail={room.transportDetail}
             signalingInfo={room.signalingInfo}
-            onChangeStaticPreference={(mode) => {
+            onChangeConnectionPreference={(mode) => {
               room.setRoomError(null);
-              room.setStaticPreference(mode);
+              room.setConnectionPreference(mode);
             }}
             onSelectCharacter={room.selectCharacter}
             onCreateRoom={room.createRoom}
-            onAcceptManualReply={room.acceptManualReply}
             onEnterLobby={() => room.setScreen('lobby')}
             onBack={() => {
               if (room.roomCode) {
@@ -76,26 +74,18 @@ export function App() {
             preferredCharacter={room.settings.preferredCharacter}
             selectedCosmetic={room.progression.selectedCosmetic}
             localRelayAvailable={room.localRelayAvailable}
-            staticPreference={room.staticPreference}
-            manualReplyCode={room.manualReplyCode}
-            transportStatus={room.transportStatus}
-            transportDetail={room.transportDetail}
-            signalingInfo={room.signalingInfo}
+            connectionPreference={room.connectionPreference}
             roomBusy={room.roomBusy}
             roomError={room.roomError}
-            onChangeStaticPreference={(mode) => {
+            onChangeConnectionPreference={(mode) => {
               room.setRoomError(null);
-              room.setStaticPreference(mode);
+              room.setConnectionPreference(mode);
             }}
             onSelectCharacter={room.selectCharacter}
             onJoinRoom={room.joinRoom}
             onBack={() => {
-              if (room.manualReplyCode) {
-                void room.leaveRoom();
-              } else {
-                room.setRoomError(null);
-                room.setScreen('landing');
-              }
+              room.setRoomError(null);
+              room.setScreen('landing');
             }}
           />
         );

@@ -19,18 +19,9 @@ describe('UI Integration & Clue Isolation Checks', () => {
     expect(screen.getByRole('button', { name: /How to Play & Settings/i })).toBeInTheDocument();
   });
 
-  it('validates invalid invite code and invalid room code cleanly on Join Room screen', async () => {
+  it('validates invalid room code cleanly on Join Room screen', async () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Join Partner's Room/i }));
-
-    // Default static mode is Direct P2P (2 Devices)
-    const inviteInput = await screen.findByLabelText(/Host Invite Code/i);
-    fireEvent.change(inviteInput, { target: { value: 'NOT-VALID' } });
-    fireEvent.click(screen.getByRole('button', { name: /Generate Reply Code/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/Invalid P2P code/i);
-
-    // Switch to 1 Browser (2 Tabs) mode
-    fireEvent.click(screen.getByRole('button', { name: /1 Browser \(2 Tabs\)/i }));
     const codeInput = await screen.findByLabelText(/Room Code/i);
     fireEvent.change(codeInput, { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: /Join Cozy Room/i }));

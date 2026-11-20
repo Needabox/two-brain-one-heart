@@ -43,14 +43,15 @@ import {
   type MultiplayerEnvelope,
   type PlayerProfilePayload,
 } from '../../multiplayer/protocol';
+import type { GameTransport, TransportStatus } from '../../multiplayer/GameTransport';
+import { PeerJSTransport } from '../../multiplayer/peerjs/PeerJSTransport';
 import {
   createSignalingProvider,
   detectLocalDevRelayAvailable,
-  type StaticConnectionPreference,
+  type ConnectionModePreference,
 } from '../../multiplayer/signaling/createSignalingProvider';
 import type { SignalingModeInfo, SignalingProvider } from '../../multiplayer/signaling/SignalingProvider';
-import { decodeManualSignalBundle } from '../../multiplayer/webrtc/manualCodec';
-import { WebRTCTransport, type TransportStatus } from '../../multiplayer/webrtc/WebRTCTransport';
+import { WebRTCTransport } from '../../multiplayer/webrtc/WebRTCTransport';
 
 export type ScreenId =
   | 'landing'
@@ -79,10 +80,8 @@ export function useMultiplayerRoom() {
   const [transportDetail, setTransportDetail] = useState<string | null>(null);
   const [signalingInfo, setSignalingInfo] = useState<SignalingModeInfo | null>(null);
   const [localRelayAvailable, setLocalRelayAvailable] = useState(false);
-  const [staticPreference, setStaticPreference] =
-    useState<StaticConnectionPreference>('manual-p2p');
-  const [manualInviteCode, setManualInviteCode] = useState<string | null>(null);
-  const [manualReplyCode, setManualReplyCode] = useState<string | null>(null);
+  const [connectionPreference, setConnectionPreference] =
+    useState<ConnectionModePreference>('auto');
   const [roomBusy, setRoomBusy] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
   const [noticeBanner, setNoticeBanner] = useState<string | null>(null);
@@ -93,7 +92,7 @@ export function useMultiplayerRoom() {
 
   // Refs for stable event-handler closures
   const signalingRef = useRef<SignalingProvider | null>(null);
-  const transportRef = useRef<WebRTCTransport | null>(null);
+  const transportRef = useRef<GameTransport | null>(null);
   const roleRef = useRef<'host' | 'guest' | null>(null);
   const roomCodeRef = useRef<string | null>(null);
   const peerIdRef = useRef<string>(peerId);
@@ -476,13 +475,12 @@ export function useMultiplayerRoom() {
         restoredOutcome?: LevelOutcome | null;
         restoredStateVersion?: number;
         targetScreen?: ScreenId;
-        manualInviteInput?: string;
-        staticModeOverride?: StaticConnectionPreference;
+        preferenceOverride?: ConnectionModePreference;
       },
     ) => {
       await teardownTransport();
       const signaling = await createSignalingProvider(
-        options?.staticModeOverride ?? staticPreference,
+        options?.preferenceOverride ?? connectionPreference,
       );
       signalingRef.current = signaling;
       const modeInfo = signaling.getModeInfo();
@@ -525,65 +523,74 @@ export function useMultiplayerRoom() {
         lastOutcomeRef.current = options.restoredOutcome;
       }
 
-      const transport = new WebRTCTransport({
-        roomCode: code,
-        selfPeerId: nextPeerId,
-        role: nextRole,
-        signaling,
-        onStatusChange: (status, detail) => {
-          setTransportStatus(status);
-          setTransportDetail(detail ?? null);
-          if (status === 'connected') {
-            setRemotePlayer((prev) => (prev ? { ...prev, connected: true } : prev));
-            if (screenRef.current === 'create-room' || screenRef.current === 'join-room') {
-              setScreen('lobby');
-            }
-            if (nextRole === 'guest' && (options?.isRecovery || isRecoveringRef.current)) {
-              transport.send('RECONNECT_REQUEST', {
-                player: buildLocalProfile(),
-                lastKnownStateVersion: stateVersionRef.current,
-              });
-              isRecoveringRef.current = false;
-            } else {
-              transport.send('ROOM_JOIN', buildLocalProfile());
-            }
-          } else if (status === 'reconnecting' || status === 'disconnected') {
-            setRemotePlayer((prev) => (prev ? { ...prev, connected: false } : prev));
+      const handleStatusChange = (status: TransportStatus, detail?: string) => {
+        setTransportStatus(status);
+        setTransportDetail(detail ?? null);
+        if (status === 'connected') {
+          setRemotePlayer((prev) => (prev ? { ...prev, connected: true } : prev));
+          if (screenRef.current === 'create-room' || screenRef.current === 'join-room') {
+            setScreen('lobby');
           }
-        },
-        onEnvelope: handleIncomingEnvelope,
-      });
-
-      transportRef.current = transport;
-      transport.startWaiting();
-
-      const meta = {
-        name: settingsRef.current.playerName || (nextRole === 'host' ? 'Player A' : 'Player B'),
-        character: settingsRef.current.preferredCharacter,
+          const activeTransport = transportRef.current;
+          if (!activeTransport) return;
+          if (nextRole === 'guest' && (options?.isRecovery || isRecoveringRef.current)) {
+            activeTransport.send('RECONNECT_REQUEST', {
+              player: buildLocalProfile(),
+              lastKnownStateVersion: stateVersionRef.current,
+            });
+            isRecoveringRef.current = false;
+          } else {
+            activeTransport.send('ROOM_JOIN', buildLocalProfile());
+          }
+        } else if (status === 'reconnecting' || status === 'disconnected') {
+          setRemotePlayer((prev) => (prev ? { ...prev, connected: false } : prev));
+        }
       };
 
-      if (modeInfo.mode === 'manual-p2p') {
+      if (modeInfo.mode === 'peerjs') {
+        const peerTransport = new PeerJSTransport({
+          roomCode: code,
+          selfPeerId: nextPeerId,
+          role: nextRole,
+          onStatusChange: handleStatusChange,
+          onEnvelope: handleIncomingEnvelope,
+        });
+        transportRef.current = peerTransport;
+        peerTransport.startWaiting();
+
         if (nextRole === 'host') {
-          const inviteCode = await transport.createManualOfferCode();
-          setManualInviteCode(inviteCode);
-          setManualReplyCode(null);
-        } else if (options?.manualInviteInput) {
-          const { replyCode } = await transport.acceptManualInviteAndCreateReply(
-            options.manualInviteInput,
-          );
-          setManualReplyCode(replyCode);
-          setManualInviteCode(null);
+          await peerTransport.createAsHost();
+        } else {
+          await peerTransport.connectAsGuest();
         }
-      } else if (nextRole === 'host') {
-        await signaling.createRoom(code, nextPeerId, meta);
       } else {
-        const joinRes = await signaling.joinRoom(code, nextPeerId, meta);
-        transport.initiateConnection(joinRes.hostId);
+        const rtcTransport = new WebRTCTransport({
+          roomCode: code,
+          selfPeerId: nextPeerId,
+          role: nextRole,
+          signaling,
+          onStatusChange: handleStatusChange,
+          onEnvelope: handleIncomingEnvelope,
+        });
+        transportRef.current = rtcTransport;
+        rtcTransport.startWaiting();
+
+        const meta = {
+          name: settingsRef.current.playerName || (nextRole === 'host' ? 'Player A' : 'Player B'),
+          character: settingsRef.current.preferredCharacter,
+        };
+
+        if (nextRole === 'host') {
+          await signaling.createRoom(code, nextPeerId, meta);
+        } else {
+          const joinRes = await signaling.joinRoom(code, nextPeerId, meta);
+          rtcTransport.initiateConnection(joinRes.hostId);
+        }
       }
 
       setScreen(options?.targetScreen ?? 'lobby');
     },
-    [buildLocalProfile, handleIncomingEnvelope, staticPreference, teardownTransport],
+    [buildLocalProfile, connectionPreference, handleIncomingEnvelope, teardownTransport],
   );
 
   // Detect dev relay availability & attempt recovery if user refreshed mid-session
@@ -595,39 +602,29 @@ export function useMultiplayerRoom() {
     const backup = loadRoomSessionBackup();
     if (!backup) return;
 
-    // Direct P2P manual sessions cannot survive a full page refresh without a signaling server
-    void (async () => {
-      const relayOk = await detectLocalDevRelayAvailable();
-      if (!relayOk && staticPreference === 'manual-p2p') {
-        clearRoomSessionBackup();
-        setNoticeBanner('Previous P2P session closed on refresh. Create or join a new invite to play (your stars & XP are saved!).');
-        return;
-      }
+    isRecoveringRef.current = true;
+    const restoredScreen: ScreenId =
+      backup.activeScreen === 'playing'
+        ? 'minigame'
+        : backup.activeScreen === 'result'
+          ? 'result'
+          : backup.activeScreen === 'world-select'
+            ? 'world-select'
+            : 'lobby';
 
-      isRecoveringRef.current = true;
-      const restoredScreen: ScreenId =
-        backup.activeScreen === 'playing'
-          ? 'minigame'
-          : backup.activeScreen === 'result'
-            ? 'result'
-            : backup.activeScreen === 'world-select'
-              ? 'world-select'
-              : 'lobby';
-
-      void attachTransport(backup.roomCode, backup.role, backup.peerId, {
-        isRecovery: true,
-        restoredLevelId: backup.selectedLevelId,
-        restoredEngine: backup.hostEngineState,
-        restoredOutcome: backup.lastOutcome,
-        restoredStateVersion: backup.stateVersion,
-        targetScreen: backup.role === 'host' ? restoredScreen : 'lobby',
-      }).catch(() => {
-        clearRoomSessionBackup();
-        isRecoveringRef.current = false;
-        setNoticeBanner('Previous room session expired. Create or join a room to play!');
-        setScreen('landing');
-      });
-    })();
+    void attachTransport(backup.roomCode, backup.role, backup.peerId, {
+      isRecovery: true,
+      restoredLevelId: backup.selectedLevelId,
+      restoredEngine: backup.hostEngineState,
+      restoredOutcome: backup.lastOutcome,
+      restoredStateVersion: backup.stateVersion,
+      targetScreen: backup.role === 'host' ? restoredScreen : 'lobby',
+    }).catch(() => {
+      clearRoomSessionBackup();
+      isRecoveringRef.current = false;
+      setNoticeBanner('Previous room session expired. Create or join a room to play!');
+      setScreen('landing');
+    });
 
     return () => {
       void teardownTransport();
@@ -643,10 +640,7 @@ export function useMultiplayerRoom() {
       }
       setRoomBusy(true);
       setRoomError(null);
-      setManualInviteCode(null);
-      setManualReplyCode(null);
       try {
-        const code = generateRoomCode(6);
         const newPeerId = createPeerId();
         setReady(false);
         setRemotePlayer(null);
@@ -655,86 +649,41 @@ export function useMultiplayerRoom() {
         setSnapshot(null);
         setPlayerAView(null);
         setLastOutcome(null);
-        await attachTransport(code, 'host', newPeerId, { targetScreen: 'create-room' });
+
+        let attemptCode = generateRoomCode(6);
+        try {
+          await attachTransport(attemptCode, 'host', newPeerId, { targetScreen: 'create-room' });
+        } catch (err) {
+          if (err instanceof Error && err.message.includes('in use')) {
+            attemptCode = generateRoomCode(6);
+            await attachTransport(attemptCode, 'host', newPeerId, { targetScreen: 'create-room' });
+          } else {
+            throw err;
+          }
+        }
         playCozySound('success', settingsRef.current.soundEnabled);
       } catch (err) {
+        await teardownTransport();
         setRoomError(err instanceof Error ? err.message : 'Unable to create room.');
       } finally {
         setRoomBusy(false);
       }
     },
-    [attachTransport],
+    [attachTransport, teardownTransport],
   );
-
-  const acceptManualReply = useCallback(async (replyCode: string) => {
-    if (!transportRef.current) {
-      setRoomError('Create a room invite first.');
-      return;
-    }
-    setRoomBusy(true);
-    setRoomError(null);
-    try {
-      await transportRef.current.acceptManualReplyCode(replyCode);
-      playCozySound('success', settingsRef.current.soundEnabled);
-    } catch (err) {
-      setRoomError(err instanceof Error ? err.message : 'Invalid reply code.');
-    } finally {
-      setRoomBusy(false);
-    }
-  }, []);
 
   const joinRoom = useCallback(
     async (rawInput: string, customName?: string) => {
-      const trimmed = rawInput.trim();
-      const isManualInvite = trimmed.startsWith('TBOH1:') || trimmed.startsWith('TBOH0:');
-
-      if (customName !== undefined) {
-        setSettings((prev) => ({ ...prev, playerName: customName.trim().slice(0, 20) }));
-      }
-
-      if (isManualInvite || (!localRelayAvailable && staticPreference === 'manual-p2p')) {
-        if (!trimmed) {
-          setRoomError('Paste the P2P Invite Code from your partner.');
-          return;
-        }
-        setRoomBusy(true);
-        setRoomError(null);
-        setManualInviteCode(null);
-        setManualReplyCode(null);
-        try {
-          const decoded = await decodeManualSignalBundle(trimmed);
-          const newPeerId = createPeerId();
-          setReady(false);
-          setRemotePlayer(null);
-          hostEngineRef.current = null;
-          stateVersionRef.current = 0;
-          setSnapshot(null);
-          setPlayerAView(null);
-          setLastOutcome(null);
-          await attachTransport(decoded.r, 'guest', newPeerId, {
-            targetScreen: 'join-room',
-            manualInviteInput: trimmed,
-            staticModeOverride: 'manual-p2p',
-          });
-          playCozySound('success', settingsRef.current.soundEnabled);
-        } catch (err) {
-          await teardownTransport();
-          setRoomError(err instanceof Error ? err.message : 'Invalid P2P Invite Code.');
-        } finally {
-          setRoomBusy(false);
-        }
-        return;
-      }
-
       const normalized = normalizeRoomCode(rawInput);
       if (!isValidRoomCodeFormat(normalized)) {
         setRoomError('Enter a valid 4–8 character room code (for example HRT429).');
         return;
       }
+      if (customName !== undefined) {
+        setSettings((prev) => ({ ...prev, playerName: customName.trim().slice(0, 20) }));
+      }
       setRoomBusy(true);
       setRoomError(null);
-      setManualInviteCode(null);
-      setManualReplyCode(null);
       try {
         const newPeerId = createPeerId();
         setReady(false);
@@ -753,7 +702,7 @@ export function useMultiplayerRoom() {
         setRoomBusy(false);
       }
     },
-    [attachTransport, localRelayAvailable, staticPreference, teardownTransport],
+    [attachTransport, teardownTransport],
   );
 
   const leaveRoom = useCallback(async () => {
@@ -768,8 +717,6 @@ export function useMultiplayerRoom() {
     setRole(null);
     setReady(false);
     setRemotePlayer(null);
-    setManualInviteCode(null);
-    setManualReplyCode(null);
     setTransportStatus('idle');
     setTransportDetail(null);
     setPlayerAView(null);
@@ -954,10 +901,8 @@ export function useMultiplayerRoom() {
     transportDetail,
     signalingInfo,
     localRelayAvailable,
-    staticPreference,
-    setStaticPreference,
-    manualInviteCode,
-    manualReplyCode,
+    connectionPreference,
+    setConnectionPreference,
     roomBusy,
     roomError,
     setRoomError,
@@ -967,7 +912,6 @@ export function useMultiplayerRoom() {
     snapshot,
     lastOutcome,
     createRoom,
-    acceptManualReply,
     joinRoom,
     leaveRoom,
     toggleReady,
