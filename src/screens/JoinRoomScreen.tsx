@@ -27,6 +27,7 @@ interface JoinRoomScreenProps {
   staticPreference: StaticConnectionPreference;
   manualReplyCode: string | null;
   transportStatus: TransportStatus;
+  transportDetail: string | null;
   signalingInfo: SignalingModeInfo | null;
   roomBusy: boolean;
   roomError: string | null;
@@ -44,6 +45,7 @@ export function JoinRoomScreen({
   staticPreference,
   manualReplyCode,
   transportStatus,
+  transportDetail,
   signalingInfo,
   roomBusy,
   roomError,
@@ -149,10 +151,19 @@ export function JoinRoomScreen({
               </div>
             </div>
 
-            <div className="flex items-center justify-center gap-2 rounded-2xl bg-[#FFF2C4]/75 px-4 py-3 text-sm font-bold text-[#7D5200]">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Waiting for Host to connect your Reply Code…
-            </div>
+            {transportStatus === 'error' && transportDetail ? (
+              <div
+                role="alert"
+                className="rounded-2xl border-2 border-[#F0527F] bg-[#FFE3EC] px-4 py-3 text-xs font-bold text-[#9A214B]"
+              >
+                {transportDetail}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2 rounded-2xl bg-[#FFF2C4]/75 px-4 py-3 text-sm font-bold text-[#7D5200]">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Waiting for Host to connect your Reply Code…
+              </div>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -17,24 +17,35 @@ import {
 
 function waitForIceGatheringComplete(
   pc: RTCPeerConnection,
-  timeoutMs: number = 2500,
+  timeoutMs: number = 5000,
 ): Promise<void> {
   if (pc.iceGatheringState === 'complete') {
     return Promise.resolve();
   }
   return new Promise((resolve) => {
+    let settleEarlyTimer: ReturnType<typeof setTimeout> | null = null;
     const finish = () => {
       clearTimeout(timer);
-      pc.removeEventListener('icegatheringstatechange', onChange);
+      if (settleEarlyTimer) clearTimeout(settleEarlyTimer);
+      pc.removeEventListener('icegatheringstatechange', onStateChange);
+      pc.removeEventListener('icecandidate', onCandidate);
       resolve();
     };
-    const onChange = () => {
+    const onStateChange = () => {
       if (pc.iceGatheringState === 'complete') {
         finish();
       }
     };
+    const onCandidate = (evt: RTCPeerConnectionIceEvent) => {
+      const cand = evt.candidate?.candidate ?? '';
+      if ((cand.includes(' typ srflx ') || cand.includes(' typ relay ')) && !settleEarlyTimer) {
+        // Give 700ms for any secondary/TURN candidates, then proceed fast
+        settleEarlyTimer = setTimeout(finish, 700);
+      }
+    };
     const timer = setTimeout(finish, timeoutMs);
-    pc.addEventListener('icegatheringstatechange', onChange);
+    pc.addEventListener('icegatheringstatechange', onStateChange);
+    pc.addEventListener('icecandidate', onCandidate);
   });
 }
 
@@ -50,6 +61,7 @@ export type TransportStatus =
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
 export function parseConfiguredIceServers(): RTCIceServer[] {
@@ -199,8 +211,18 @@ export class WebRTCTransport {
         this.opts.onStatusChange('reconnecting', 'Connection hiccup, attempting recovery...');
       } else if (pc.connectionState === 'failed') {
         this.opts.onStatusChange(
-          'reconnecting',
-          'Peer connection dropped. Check network or wait for reconnect.',
+          'error',
+          'Direct P2P connection failed (strict NAT/firewall). Try Wi-Fi or add a TURN server in VITE_ICE_SERVERS.',
+        );
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (this.disposed) return;
+      if (pc.iceConnectionState === 'failed') {
+        this.opts.onStatusChange(
+          'error',
+          'Direct P2P ICE failed (strict NAT/firewall). Try Wi-Fi or add a TURN server in VITE_ICE_SERVERS.',
         );
       }
     };
@@ -373,13 +395,21 @@ export class WebRTCTransport {
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    await waitForIceGatheringComplete(pc, 2500);
+    await waitForIceGatheringComplete(pc, 5000);
 
     if (!pc.localDescription?.sdp) {
       throw new Error('Could not generate WebRTC invite SDP.');
     }
 
-    this.opts.onStatusChange('waiting-for-partner', 'Send the invite code to your partner, then paste their reply code.');
+    const hasPublicCandidate =
+      pc.localDescription.sdp.includes(' typ srflx ') ||
+      pc.localDescription.sdp.includes(' typ relay ');
+    this.opts.onStatusChange(
+      'waiting-for-partner',
+      hasPublicCandidate
+        ? 'Public network candidate ready! Send the invite code to your partner, then paste their reply code.'
+        : 'Warning: STUN could not discover a public IP on this network. Faraway peers may not connect without Wi-Fi or a TURN server.',
+    );
     return encodeManualSignalBundle({
       v: 1,
       r: this.opts.roomCode,
@@ -403,6 +433,14 @@ export class WebRTCTransport {
     await this.pc.setRemoteDescription(
       new RTCSessionDescription({ type: 'answer', sdp: bundle.sdp }),
     );
+    setTimeout(() => {
+      if (!this.disposed && !this.isConnected() && this.pc?.connectionState !== 'failed') {
+        this.opts.onStatusChange(
+          'connecting',
+          'Still negotiating NAT/firewall… If stuck, one network likely uses Symmetric NAT/CGNAT and requires a TURN server (VITE_ICE_SERVERS) or switching to Wi-Fi.',
+        );
+      }
+    }, 10_000);
   }
 
   public async acceptManualInviteAndCreateReply(
@@ -425,7 +463,7 @@ export class WebRTCTransport {
     );
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    await waitForIceGatheringComplete(pc, 2500);
+    await waitForIceGatheringComplete(pc, 5000);
 
     if (!pc.localDescription?.sdp) {
       throw new Error('Could not generate WebRTC reply SDP.');
@@ -438,7 +476,15 @@ export class WebRTCTransport {
       sdp: pc.localDescription.sdp,
     });
 
-    this.opts.onStatusChange('connecting', 'Send this reply code back to Host to finish connecting!');
+    const hasPublicCandidate =
+      pc.localDescription.sdp.includes(' typ srflx ') ||
+      pc.localDescription.sdp.includes(' typ relay ');
+    this.opts.onStatusChange(
+      'connecting',
+      hasPublicCandidate
+        ? 'Send this reply code back to Host to finish connecting!'
+        : 'Warning: STUN could not discover a public IP on this network. Faraway peers may not connect without Wi-Fi or a TURN server.',
+    );
     return { roomCode: bundle.r, replyCode };
   }
 

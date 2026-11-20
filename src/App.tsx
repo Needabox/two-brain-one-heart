@@ -48,6 +48,7 @@ export function App() {
             roomBusy={room.roomBusy}
             roomError={room.roomError}
             transportStatus={room.transportStatus}
+            transportDetail={room.transportDetail}
             signalingInfo={room.signalingInfo}
             onChangeStaticPreference={(mode) => {
               room.setRoomError(null);
@@ -78,6 +79,7 @@ export function App() {
             staticPreference={room.staticPreference}
             manualReplyCode={room.manualReplyCode}
             transportStatus={room.transportStatus}
+            transportDetail={room.transportDetail}
             signalingInfo={room.signalingInfo}
             roomBusy={room.roomBusy}
             roomError={room.roomError}

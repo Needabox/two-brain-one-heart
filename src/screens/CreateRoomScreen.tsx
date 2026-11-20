@@ -29,6 +29,7 @@ interface CreateRoomScreenProps {
   roomBusy: boolean;
   roomError: string | null;
   transportStatus: TransportStatus;
+  transportDetail: string | null;
   signalingInfo: SignalingModeInfo | null;
   onChangeStaticPreference: (mode: StaticConnectionPreference) => void;
   onSelectCharacter: (char: CharacterId) => void;
@@ -49,6 +50,7 @@ export function CreateRoomScreen({
   roomBusy,
   roomError,
   transportStatus,
+  transportDetail,
   signalingInfo,
   onChangeStaticPreference,
   onSelectCharacter,
@@ -242,6 +244,11 @@ export function CreateRoomScreen({
                 onClick={(e) => e.currentTarget.select()}
                 className="w-full resize-none rounded-2xl border-2 border-[#4A355A]/15 bg-[#FFFDF9] p-2.5 font-mono text-xs text-[#4A355A]"
               />
+              {transportDetail && transportDetail.startsWith('Warning:') && (
+                <div className="rounded-2xl border-2 border-[#FFC94D] bg-[#FFF2C4] px-3 py-2 text-xs font-bold text-[#7D5200]">
+                  {transportDetail}
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <CuteButton
                   variant="sky"
@@ -281,12 +288,18 @@ export function CreateRoomScreen({
                 className="w-full resize-none rounded-2xl border-2 border-[#4A355A]/20 bg-[#FFFDF9] p-2.5 font-mono text-xs text-[#4A355A] placeholder:font-sans placeholder:text-[#9CB6CC]"
               />
 
-              {roomError && (
+              {(roomError || (transportStatus === 'error' && transportDetail)) && (
                 <div
                   role="alert"
                   className="rounded-2xl border-2 border-[#F0527F] bg-[#FFE3EC] px-3 py-2 text-xs font-bold text-[#9A214B]"
                 >
-                  {roomError}
+                  {roomError ?? transportDetail}
+                </div>
+              )}
+
+              {transportStatus === 'connecting' && transportDetail && !roomError && (
+                <div className="rounded-2xl bg-[#FFF2C4]/80 px-3 py-2 text-xs font-bold text-[#7D5200]">
+                  {transportDetail}
                 </div>
               )}
 
