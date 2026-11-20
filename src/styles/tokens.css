@@ -1,0 +1,59 @@
+:root {
+  /* Core Ink & Neutrals */
+  --tboh-ink: #4a355a;
+  --tboh-ink-soft: #6d5880;
+  --tboh-ink-muted: #8b769d;
+  --tboh-cream: #fffdf9;
+  --tboh-warm-bg: #fff7f2;
+
+  /* Pastel Brand Palette (from visual reference boards) */
+  --tboh-lavender-50: #f7f3ff;
+  --tboh-lavender-100: #ede5ff;
+  --tboh-lavender-200: #d9c7ff;
+  --tboh-lavender-400: #9b8cff;
+  --tboh-periwinkle: #8fa8ff;
+
+  --tboh-sky-100: #dff3ff;
+  --tboh-sky-300: #89c9ff;
+  --tboh-sky-500: #4ca3f5;
+
+  --tboh-pink-100: #ffe3ec;
+  --tboh-pink-300: #ff9ab8;
+  --tboh-pink-400: #ff6b93;
+  --tboh-pink-500: #f0527f;
+
+  --tboh-peach-100: #ffece3;
+  --tboh-peach-300: #ffb396;
+  --tboh-peach-400: #ff8f70;
+
+  --tboh-mint-100: #dcf9ed;
+  --tboh-mint-400: #5cd0a5;
+
+  --tboh-gold-100: #fff2c4;
+  --tboh-gold-400: #ffc94d;
+  --tboh-gold-500: #e89b1e;
+
+  /* Typography */
+  --tboh-font-display: 'Fredoka', 'Nunito', 'Quicksand', ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', system-ui, sans-serif;
+  --tboh-font-sans: 'Nunito', 'Quicksand', ui-rounded, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Elevation & Tactile Bevels */
+  --tboh-shadow-card: 0 10px 26px -8px rgba(74, 53, 90, 0.16), 0 4px 0 rgba(74, 53, 90, 0.08);
+  --tboh-shadow-btn: 0 4px 0 rgba(74, 53, 90, 0.22);
+  --tboh-shadow-btn-active: 0 1px 0 rgba(74, 53, 90, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tboh-float,
+  .tboh-sparkle {
+    animation: none !important;
+  }
+}
+
+.reduced-motion *,
+.reduced-motion *::before,
+.reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}

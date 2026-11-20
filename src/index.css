@@ -1,0 +1,72 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+
+@layer base {
+  html,
+  body {
+    font-family: var(--tboh-font-sans);
+    color: var(--tboh-ink);
+    background: linear-gradient(180deg, #ede5ff 0%, #dff3ff 52%, #ffe9f0 100%);
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--tboh-font-display);
+  }
+
+  button,
+  [role="button"],
+  a,
+  input,
+  select {
+    touch-action: manipulation;
+  }
+
+  :focus-visible {
+    outline: 3px solid #6b7dff;
+    outline-offset: 2px;
+  }
+}
+
+@keyframes tbohFloat {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes tbohSparkle {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.tboh-float {
+  animation: tbohFloat 3.4s ease-in-out infinite;
+}
+
+.tboh-sparkle {
+  animation: tbohSparkle 2.4s ease-in-out infinite;
+}
+
+.tboh-title-stroke {
+  text-shadow:
+    0 3px 0 #4a355a,
+    -2px -2px 0 #4a355a,
+    2px -2px 0 #4a355a,
+    -2px 2px 0 #4a355a,
+    2px 2px 0 #4a355a;
+}

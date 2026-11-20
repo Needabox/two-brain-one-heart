@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 180" fill="none">
+  <!-- Soft shadow -->
+  <ellipse cx="80" cy="166" rx="34" ry="8" fill="#4A355A" fill-opacity="0.14"/>
+  <!-- Legs & Sneakers -->
+  <rect x="61" y="132" width="12" height="19" rx="5" fill="#FFE0CC" stroke="#4A355A" stroke-width="3.2"/>
+  <rect x="87" y="132" width="12" height="19" rx="5" fill="#FFE0CC" stroke="#4A355A" stroke-width="3.2"/>
+  <path d="M56 150c0-4 4-7 10-7h9c4 0 7 3 7 7v4c0 3-2 5-5 5H60c-2 0-4-2-4-5v-4z" fill="#6AA8FF" stroke="#4A355A" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M78 150c0-4 3-7 7-7h9c6 0 10 3 10 7v4c0 3-2 5-4 5H83c-3 0-5-2-5-5v-4z" fill="#6AA8FF" stroke="#4A355A" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M57 153h24M79 153h24" stroke="#FFFDF9" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Navy Shorts -->
+  <path d="M56 116h48l4 20c0 2-2 4-4 4H84l-4-9-4 9H56c-2 0-4-2-4-4l4-20z" fill="#3B4675" stroke="#4A355A" stroke-width="3.5" stroke-linejoin="round"/>
+  <!-- Arms -->
+  <path d="M54 91c-9 5-14 14-12 22 1 4 6 6 10 3 4-3 6-10 8-16" fill="#FFE0CC" stroke="#4A355A" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M106 91c9 5 14 14 12 22-1 4-6 6-10 3-4-3-6-10-8-16" fill="#FFE0CC" stroke="#4A355A" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Peach/Coral Top -->
+  <path d="M55 88c2-6 10-10 25-10s23 4 25 10l6 12-10 5-3-5v20H62v-20l-3 5-10-5 6-12z" fill="#FF9A84" stroke="#4A355A" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M72 80c3 4 13 4 16 0" stroke="#FFF3EE" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Head -->
+  <circle cx="80" cy="57" r="36" fill="#FFE0CC" stroke="#4A355A" stroke-width="3.6"/>
+  <!-- Ears -->
+  <circle cx="44" cy="60" r="6.5" fill="#FFE0CC" stroke="#4A355A" stroke-width="3.2"/>
+  <circle cx="116" cy="60" r="6.5" fill="#FFE0CC" stroke="#4A355A" stroke-width="3.2"/>
+  <!-- Warm Brown Tousled Hair -->
+  <path d="M43 56c-2-20 13-37 37-37s39 17 37 37c-2-9-8-15-15-17-3 5-10 8-17 6 1-4 0-8-3-10-4 7-12 11-20 10 2-4 1-7-1-9-6 6-13 11-18 20z" fill="#704736" stroke="#4A355A" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M55 34c7-6 18-9 29-7" stroke="#8F614E" stroke-width="3" stroke-linecap="round"/>
+  <!-- Face: Eyes, Blush, Friendly Smile -->
+  <ellipse cx="59" cy="68" rx="6" ry="3.5" fill="#FF9EB6" fill-opacity="0.72"/>
+  <ellipse cx="101" cy="68" rx="6" ry="3.5" fill="#FF9EB6" fill-opacity="0.72"/>
+  <circle cx="64" cy="60" r="4.6" fill="#4A355A"/>
+  <circle cx="96" cy="60" r="4.6" fill="#4A355A"/>
+  <circle cx="62.5" cy="58.4" r="1.6" fill="#FFFDF9"/>
+  <circle cx="94.5" cy="58.4" r="1.6" fill="#FFFDF9"/>
+  <path d="M74 68c2.2 3.5 9.8 3.5 12 0" stroke="#4A355A" stroke-width="3" stroke-linecap="round"/>
+</svg>
