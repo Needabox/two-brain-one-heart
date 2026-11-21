@@ -5,7 +5,7 @@
 - **UI Framework:** React 19 + TypeScript (`strict: true`, zero unjustified `any`)
 - **Build Tool:** Vite
 - **Styling:** Tailwind CSS v4 + custom pastel design tokens (`src/styles/tokens.css`)
-- **Motion:** Framer Motion (wrapped with `MotionConfig reducedMotion="user"` + explicit app setting toggle)
+- **Motion:** CSS keyframe transitions in `src/styles/tokens.css` honoring `prefers-reduced-motion` + explicit app setting toggle
 - **Runtime Validation:** Zod (validates all incoming WebRTC/signaling messages and persisted `localStorage` payloads)
 - **Icons:** Custom kawaii SVG asset components + `lucide-react` for clean secondary UI controls
 - **Testing:** Vitest + `@testing-library/react` + `jsdom`
@@ -23,7 +23,8 @@ public/
 src/
   game-engine/       # Pure TypeScript: campaign puzzles/engines, arcade registry & dispatcher, scoring
   multiplayer/
-    protocol.ts      # Versioned Zod schemas (all 13 game actions & sanitized snapshots)
+    EnvelopeChannel.ts # Shared message framing, dedup, outbound buffer & PING/PONG heartbeat
+    protocol.ts        # Versioned Zod schemas (all 13 game actions & sanitized snapshots)
     peerjs/          # PeerJSTransport (PeerJS Cloud / custom PeerServer P2P DataConnection)
     signaling/       # SignalingProvider interface + LocalDevHttp + BroadcastChannel adapters
     webrtc/          # WebRTCTransport wrapper, DataChannel transport, heartbeat & reconnect manager

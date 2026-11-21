@@ -17,7 +17,7 @@ export class LocalDevHttpSignalingProvider implements SignalingProvider {
       mode: 'local-dev-relay',
       label: 'Local Dev Relay',
       supportsCrossDevice: true,
-      description: 'Connected via Vite local dev relay (works across separate browsers & local Wi-Fi). Configure Supabase + TURN env vars for internet play.',
+      description: 'Connected via Vite local dev relay (works across separate browsers & local Wi-Fi). Switch to PeerJS Cloud P2P for internet play.',
     };
   }
 

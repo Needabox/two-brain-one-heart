@@ -27,7 +27,7 @@ export class BroadcastChannelSignalingProvider implements SignalingProvider {
       mode: 'broadcast-channel',
       label: 'Same-Browser Tabs',
       supportsCrossDevice: false,
-      description: 'Running without signaling credentials: works between tabs in the same browser. Configure Supabase env vars for internet play.',
+      description: 'Same-browser tab signaling active. Switch to Online 2 Devices (PeerJS) to play across separate devices.',
     };
   }
 

@@ -1,4 +1,3 @@
-import { MotionConfig, motion } from 'framer-motion';
 import { AssetImage } from './components/AssetImage';
 import { useMultiplayerRoom } from './features/room/useMultiplayerRoom';
 import { ArcadeSelectScreen } from './screens/ArcadeSelectScreen';
@@ -211,37 +210,30 @@ export function App() {
   };
 
   return (
-    <MotionConfig reducedMotion={room.settings.reducedMotion ? 'always' : 'user'}>
+    <div
+      className={`relative min-h-dvh w-full overflow-x-hidden px-3 py-4 sm:px-6 sm:py-6 ${
+        room.settings.reducedMotion ? 'reduced-motion' : ''
+      }`}
+    >
+      {/* Soft decorative pastel clouds along bottom edge */}
       <div
-        className={`relative min-h-dvh w-full overflow-x-hidden px-3 py-4 sm:px-6 sm:py-6 ${
-          room.settings.reducedMotion ? 'reduced-motion' : ''
-        }`}
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-0 opacity-65"
       >
-        {/* Soft decorative pastel clouds along bottom edge */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-x-0 bottom-0 z-0 opacity-65"
-        >
-          <AssetImage
-            src="/assets/backgrounds/pastel-sky-clouds.svg"
-            alt=""
-            className="h-36 w-full object-cover object-top sm:h-48"
-            fallback={null}
-          />
-        </div>
-
-        <main className="relative z-10 mx-auto w-full max-w-3xl pb-8">
-          <motion.div
-            key={room.screen}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.14 }}
-          >
-            {renderScreen()}
-          </motion.div>
-        </main>
+        <AssetImage
+          src="/assets/backgrounds/pastel-sky-clouds.svg"
+          alt=""
+          className="h-36 w-full object-cover object-top sm:h-48"
+          fallback={null}
+        />
       </div>
-    </MotionConfig>
+
+      <main className="relative z-10 mx-auto w-full max-w-3xl pb-8">
+        <div key={room.screen} className="tboh-screen-enter">
+          {renderScreen()}
+        </div>
+      </main>
+    </div>
   );
 }
 

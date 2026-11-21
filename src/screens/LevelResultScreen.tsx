@@ -5,7 +5,11 @@ import { CuteButton } from '../components/CuteButton';
 import { PastelCard } from '../components/PastelCard';
 import { getLevelMeta } from '../game-engine/puzzles';
 import { getArcadeGameEntry } from '../game-engine/registry';
-import { getPlayerLevelFromXp, type ProgressionState } from '../game-engine/scoring';
+import {
+  formatDuration,
+  getPlayerLevelFromXp,
+  type ProgressionState,
+} from '../game-engine/scoring';
 import type { CharacterId, CosmeticId, LevelId, LevelOutcome } from '../game-engine/types';
 
 interface LevelResultScreenProps {
@@ -20,13 +24,6 @@ interface LevelResultScreenProps {
   onReplay: () => void;
   onOpenArcade?: () => void;
   onBackToLobby: () => void;
-}
-
-function formatDuration(ms: number): string {
-  const sec = Math.max(1, Math.round(ms / 1000));
-  const min = Math.floor(sec / 60);
-  const rem = sec % 60;
-  return `${String(min).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
 }
 
 export function LevelResultScreen({
@@ -123,7 +120,7 @@ export function LevelResultScreen({
           <div className="rounded-2xl bg-[#F7F3FF] p-3 text-center">
             <p className="text-[11px] font-bold text-[#6D5880]">Time</p>
             <p className="font-display text-lg font-extrabold text-[#4A355A]">
-              {formatDuration(outcome.elapsedMs)}
+              {formatDuration(outcome.elapsedMs, true)}
             </p>
           </div>
           <div className="rounded-2xl bg-[#FFE3EC] p-3 text-center">

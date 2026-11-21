@@ -2,7 +2,7 @@
 
 **Two minds. Different clues. One mission.**
 
-A pure-frontend, mobile-first, two-player cooperative puzzle adventure featuring **World 1 Campaign (5 levels)** and **Arcade Mode (8 distinct cooperative mini-games across Easy / Medium / Hard)** built with React, TypeScript, Vite, Tailwind CSS, Framer Motion, Zod, PeerJS, and WebRTC DataChannels — deployable directly to Vercel with zero database or custom backend required.
+A pure-frontend, mobile-first, two-player cooperative puzzle adventure featuring **World 1 Campaign (5 levels)** and **Arcade Mode (8 distinct cooperative mini-games across Easy / Medium / Hard)** built with React, TypeScript, Vite, Tailwind CSS, Zod, PeerJS, and WebRTC DataChannels — deployable directly to Vercel with zero database or custom backend required.
 
 ### Included Game Modes (13 Total)
 - **World 1 Campaign (*The Cozy Room*):** Memory Sync, Secret Language, Lost Together, Shape It!, Mixed Challenge.

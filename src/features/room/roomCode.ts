@@ -22,8 +22,8 @@ export function isValidRoomCodeFormat(input: string): boolean {
 }
 
 export function createPeerId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `peer-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `peer-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  );
 }

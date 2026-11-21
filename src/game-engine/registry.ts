@@ -1,11 +1,8 @@
-import { LEVEL_METADATA } from './puzzles';
 import type { ScoringThresholds } from './scoring';
 import type {
   ArcadeGameId,
   DifficultyLevel,
   GameCategory,
-  LevelId,
-  MiniGameKind,
 } from './types';
 
 export interface ArcadeGameRegistryEntry {
@@ -21,17 +18,6 @@ export interface ArcadeGameRegistryEntry {
   thresholds: Record<DifficultyLevel, ScoringThresholds>;
   hintDescription: string;
   unlockedByDefault: boolean;
-}
-
-export interface CampaignGameRegistryEntry {
-  id: MiniGameKind;
-  levelId: LevelId;
-  name: string;
-  category: GameCategory;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
-  shortDescription: string;
-  estimatedDuration: string;
-  iconAsset: string;
 }
 
 export const ARCADE_CATEGORIES: GameCategory[] = [
@@ -189,27 +175,6 @@ export const ARCADE_GAME_REGISTRY: ArcadeGameRegistryEntry[] = [
     unlockedByDefault: true,
   },
 ];
-
-const CAMPAIGN_CATEGORIES: Record<LevelId, GameCategory> = {
-  1: 'Memory',
-  2: 'Logic',
-  3: 'Spatial Reasoning',
-  4: 'Spatial Reasoning',
-  5: 'Coordination',
-};
-
-export const CAMPAIGN_GAME_REGISTRY: CampaignGameRegistryEntry[] = LEVEL_METADATA.map(
-  (lvl) => ({
-    id: lvl.miniGame,
-    levelId: lvl.id,
-    name: lvl.name,
-    category: CAMPAIGN_CATEGORIES[lvl.id],
-    difficulty: lvl.difficulty,
-    shortDescription: lvl.description,
-    estimatedDuration: '2–4 min',
-    iconAsset: lvl.iconAsset,
-  }),
-);
 
 export function getArcadeGameEntry(gameId: ArcadeGameId): ArcadeGameRegistryEntry {
   const entry = ARCADE_GAME_REGISTRY.find((g) => g.id === gameId);

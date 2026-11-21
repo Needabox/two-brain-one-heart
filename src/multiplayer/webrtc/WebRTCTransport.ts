@@ -1,11 +1,6 @@
+import { EnvelopeChannel } from '../EnvelopeChannel';
 import type { GameTransport, TransportStatus } from '../GameTransport';
-import {
-  buildEnvelope,
-  EventDeduplicator,
-  parseMultiplayerEnvelope,
-  type EventPayload,
-  type MultiplayerEnvelope,
-} from '../protocol';
+import type { EventPayload, MultiplayerEnvelope } from '../protocol';
 import type {
   PeerPresenceEvent,
   SignalingProvider,
@@ -29,7 +24,7 @@ export function parseConfiguredIceServers(): RTCIceServer[] {
       return parsed as RTCIceServer[];
     }
   } catch {
-    // Fall back to default STUN servers if malformed JSON
+    // Fall back to default STUN servers
   }
   return DEFAULT_ICE_SERVERS;
 }
@@ -46,22 +41,19 @@ export interface WebRTCTransportOptions {
 
 export class WebRTCTransport implements GameTransport {
   private readonly opts: WebRTCTransportOptions;
+  private readonly channel: EnvelopeChannel;
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
   private remotePeerId: string | undefined;
   private pendingIceCandidates: RTCIceCandidateInit[] = [];
-  private outboundQueue: MultiplayerEnvelope[] = [];
-  private seq = 1;
-  private readonly dedup = new EventDeduplicator(500);
   private unsubSignal: (() => void) | null = null;
   private unsubPresence: (() => void) | null = null;
-  private pingTimer: ReturnType<typeof setInterval> | null = null;
-  private lastPongAt = 0;
   private disposed = false;
   private makingOffer = false;
 
   constructor(opts: WebRTCTransportOptions) {
     this.opts = opts;
+    this.channel = new EnvelopeChannel(opts);
     this.unsubSignal = opts.signaling.onSignal((evt) => {
       void this.handleSignal(evt.fromPeerId, evt.signal);
     });
@@ -76,10 +68,14 @@ export class WebRTCTransport implements GameTransport {
     );
   }
 
+  private rawSend = (serialized: string): boolean => {
+    if (this.dc?.readyState !== 'open') return false;
+    this.dc.send(serialized);
+    return true;
+  };
+
   public initiateConnection(targetPeerId?: string): void {
-    if (targetPeerId) {
-      this.remotePeerId = targetPeerId;
-    }
+    if (targetPeerId) this.remotePeerId = targetPeerId;
     if (this.opts.role === 'host') {
       void this.createOfferConnection();
     } else {
@@ -111,13 +107,13 @@ export class WebRTCTransport implements GameTransport {
         );
       }
     } else if (evt.type === 'peer-left') {
-      this.stopHeartbeat();
+      this.channel.stopHeartbeat();
       this.opts.onStatusChange('reconnecting', 'Partner disconnected. Waiting to reconnect...');
     }
   }
 
   private teardownPeerConnection(): void {
-    this.stopHeartbeat();
+    this.channel.stopHeartbeat();
     if (this.dc) {
       this.dc.onopen = null;
       this.dc.onclose = null;
@@ -147,9 +143,7 @@ export class WebRTCTransport implements GameTransport {
 
   private createBasePeerConnection(): RTCPeerConnection {
     this.teardownPeerConnection();
-    const pc = new RTCPeerConnection({
-      iceServers: parseConfiguredIceServers(),
-    });
+    const pc = new RTCPeerConnection({ iceServers: parseConfiguredIceServers() });
 
     pc.onicecandidate = (evt) => {
       if (!evt.candidate || this.disposed) return;
@@ -182,45 +176,29 @@ export class WebRTCTransport implements GameTransport {
 
     dc.onopen = () => {
       if (this.disposed) return;
-      this.lastPongAt = Date.now();
       this.opts.onStatusChange('connected');
-      this.flushOutboundQueue();
-      this.startHeartbeat();
+      this.channel.flush(this.rawSend);
+      this.channel.startHeartbeat((sentAt) => {
+        if (this.dc?.readyState === 'open') this.send('PING', { sentAt });
+      });
     };
 
     dc.onclose = () => {
       if (this.disposed) return;
-      this.stopHeartbeat();
+      this.channel.stopHeartbeat();
       this.opts.onStatusChange('reconnecting', 'Data channel closed; waiting for partner...');
     };
 
     dc.onerror = () => {
-      if (this.disposed) return;
-      this.opts.onStatusChange('reconnecting', 'Temporary channel error...');
+      if (!this.disposed) {
+        this.opts.onStatusChange('reconnecting', 'Temporary channel error...');
+      }
     };
 
     dc.onmessage = (evt: MessageEvent<string>) => {
-      if (this.disposed) return;
-      try {
-        const parsedJson = JSON.parse(evt.data) as unknown;
-        const envelope = parseMultiplayerEnvelope(parsedJson);
-        if (!envelope) return;
-        if (envelope.roomId !== this.opts.roomCode) return;
-        if (this.dedup.hasSeenOrMark(envelope.eventId)) return;
-
-        if (envelope.type === 'PING') {
-          this.send('PONG', { echoedSentAt: envelope.payload.sentAt });
-          return;
-        }
-        if (envelope.type === 'PONG') {
-          this.lastPongAt = Date.now();
-          return;
-        }
-
-        this.opts.onEnvelope(envelope);
-      } catch {
-        // Ignore malformed payloads
-      }
+      this.channel.handleRawData(evt.data, (echoedSentAt) =>
+        this.send('PONG', { echoedSentAt }),
+      );
     };
   }
 
@@ -230,8 +208,7 @@ export class WebRTCTransport implements GameTransport {
     try {
       this.opts.onStatusChange('connecting', 'Establishing peer connection...');
       const pc = this.createBasePeerConnection();
-      const dc = pc.createDataChannel('tboh-game', { ordered: true });
-      this.wireDataChannel(dc);
+      this.wireDataChannel(pc.createDataChannel('tboh-game', { ordered: true }));
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -258,9 +235,7 @@ export class WebRTCTransport implements GameTransport {
     this.remotePeerId = fromPeerId;
 
     if (signal.kind === 'ready-to-pair') {
-      if (this.opts.role === 'host') {
-        await this.createOfferConnection();
-      }
+      if (this.opts.role === 'host') await this.createOfferConnection();
       return;
     }
 
@@ -268,9 +243,7 @@ export class WebRTCTransport implements GameTransport {
       try {
         this.opts.onStatusChange('connecting', 'Accepting partner connection...');
         const pc = this.createBasePeerConnection();
-        pc.ondatachannel = (evt) => {
-          this.wireDataChannel(evt.channel);
-        };
+        pc.ondatachannel = (evt) => this.wireDataChannel(evt.channel);
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
         await this.drainIceCandidates(pc);
 
@@ -305,7 +278,7 @@ export class WebRTCTransport implements GameTransport {
     }
 
     if (signal.kind === 'ice') {
-      if (!this.pc || !this.pc.remoteDescription) {
+      if (!this.pc?.remoteDescription) {
         this.pendingIceCandidates.push(signal.candidate);
         return;
       }
@@ -333,58 +306,7 @@ export class WebRTCTransport implements GameTransport {
     type: T,
     payload: EventPayload<T>,
   ): MultiplayerEnvelope {
-    const envelope = buildEnvelope(
-      this.opts.roomCode,
-      this.opts.selfPeerId,
-      this.seq++,
-      type,
-      payload,
-    );
-
-    if (this.dc && this.dc.readyState === 'open') {
-      this.dc.send(JSON.stringify(envelope));
-    } else if (type !== 'PING' && type !== 'PONG') {
-      this.outboundQueue.push(envelope);
-      if (this.outboundQueue.length > 50) {
-        this.outboundQueue.shift();
-      }
-    }
-
-    return envelope;
-  }
-
-  private flushOutboundQueue(): void {
-    if (!this.dc || this.dc.readyState !== 'open') return;
-    while (this.outboundQueue.length > 0) {
-      const env = this.outboundQueue.shift();
-      if (env) {
-        this.dc.send(JSON.stringify(env));
-      }
-    }
-  }
-
-  private startHeartbeat(): void {
-    this.stopHeartbeat();
-    this.lastPongAt = Date.now();
-    this.pingTimer = setInterval(() => {
-      if (this.disposed) return;
-      if (this.dc && this.dc.readyState === 'open') {
-        this.send('PING', { sentAt: Date.now() });
-      }
-      const silenceMs = Date.now() - this.lastPongAt;
-      if (silenceMs > 22_000) {
-        this.opts.onStatusChange('disconnected', 'Partner timed out.');
-      } else if (silenceMs > 10_000) {
-        this.opts.onStatusChange('reconnecting', 'Waiting for partner heartbeat...');
-      }
-    }, 4000);
-  }
-
-  private stopHeartbeat(): void {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
-    }
+    return this.channel.send(type, payload, this.rawSend);
   }
 
   public isConnected(): boolean {
@@ -396,6 +318,6 @@ export class WebRTCTransport implements GameTransport {
     this.unsubSignal?.();
     this.unsubPresence?.();
     this.teardownPeerConnection();
-    this.outboundQueue = [];
+    this.channel.dispose();
   }
 }

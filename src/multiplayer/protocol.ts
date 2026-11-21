@@ -752,7 +752,6 @@ export function parseMultiplayerEnvelope(raw: unknown): MultiplayerEnvelope | nu
 
 export class EventDeduplicator {
   private readonly seen = new Set<string>();
-  private readonly order: string[] = [];
   private readonly maxEntries: number;
 
   constructor(maxEntries: number = 500) {
@@ -760,29 +759,25 @@ export class EventDeduplicator {
   }
 
   hasSeenOrMark(eventId: string): boolean {
-    if (this.seen.has(eventId)) {
-      return true;
-    }
+    if (this.seen.has(eventId)) return true;
     this.seen.add(eventId);
-    this.order.push(eventId);
-    if (this.order.length > this.maxEntries) {
-      const oldest = this.order.shift();
-      if (oldest) this.seen.delete(oldest);
+    if (this.seen.size > this.maxEntries) {
+      const oldest = this.seen.values().next().value;
+      if (oldest !== undefined) this.seen.delete(oldest);
     }
     return false;
   }
 
   clear(): void {
     this.seen.clear();
-    this.order.length = 0;
   }
 }
 
 export function createEventId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  );
 }
 
 export type EventPayload<T extends MultiplayerEnvelope['type']> = Extract<

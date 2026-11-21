@@ -6,6 +6,7 @@ import { CuteButton } from '../components/CuteButton';
 import { PastelCard } from '../components/PastelCard';
 import { getLevelMeta } from '../game-engine/puzzles';
 import { getArcadeGameEntry } from '../game-engine/registry';
+import { formatDuration } from '../game-engine/scoring';
 import type {
   GameActionInput,
   LaunchTarget,
@@ -40,13 +41,6 @@ interface MiniGameScreenProps {
   onAction: (action: GameActionInput) => void;
   onRestart: () => void;
   onExitToLobby: () => void;
-}
-
-function formatDuration(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
 export function MiniGameScreen({

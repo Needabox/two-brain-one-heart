@@ -1,49 +1,29 @@
 import { BroadcastChannelSignalingProvider } from './BroadcastChannelSignalingProvider';
 import { LocalDevHttpSignalingProvider } from './LocalDevHttpSignalingProvider';
-import type {
-  JoinRoomResult,
-  SignalingModeInfo,
-  SignalingProvider,
-} from './SignalingProvider';
+import type { SignalingModeInfo, SignalingProvider } from './SignalingProvider';
 
-export class PeerJSSignalingInfoProvider implements SignalingProvider {
-  getModeInfo(): SignalingModeInfo {
-    return {
-      mode: 'peerjs',
-      label: 'PeerJS Cloud P2P',
-      supportsCrossDevice: true,
-      description:
-        'Uses PeerJS Cloud WebSocket broker (0.peerjs.com) + WebRTC DataChannels for 6-character room codes across separate devices without any backend server.',
-    };
-  }
+const PEERJS_MODE_INFO: SignalingModeInfo = {
+  mode: 'peerjs',
+  label: 'PeerJS Cloud P2P',
+  supportsCrossDevice: true,
+  description:
+    'Uses PeerJS Cloud WebSocket broker (0.peerjs.com) + WebRTC DataChannels for 6-character room codes across separate devices without any backend server.',
+};
 
-  async createRoom(): Promise<void> {
-    // Handled directly by PeerJSTransport
-  }
+const noop = async () => undefined;
+const noopUnsub = () => () => undefined;
 
-  async joinRoom(): Promise<JoinRoomResult> {
-    return { hostId: 'peerjs-host' };
-  }
-
-  async sendSignal(): Promise<void> {
-    // Handled internally by PeerJS
-  }
-
-  async leaveRoom(): Promise<void> {
-    // Handled by PeerJSTransport.dispose()
-  }
-
-  onSignal(): () => void {
-    return () => undefined;
-  }
-
-  onPeerPresence(): () => void {
-    return () => undefined;
-  }
-
-  dispose(): void {
-    // noop
-  }
+function createPeerJsInfoProvider(): SignalingProvider {
+  return {
+    getModeInfo: () => PEERJS_MODE_INFO,
+    createRoom: noop,
+    joinRoom: async () => ({ hostId: 'peerjs-host' }),
+    sendSignal: noop,
+    leaveRoom: noop,
+    onSignal: noopUnsub,
+    onPeerPresence: noopUnsub,
+    dispose: () => undefined,
+  };
 }
 
 export type ConnectionModePreference =
@@ -75,7 +55,7 @@ export async function createSignalingProvider(
     return new BroadcastChannelSignalingProvider();
   }
   if (preference === 'peerjs' || modeOverride === 'peerjs') {
-    return new PeerJSSignalingInfoProvider();
+    return createPeerJsInfoProvider();
   }
 
   if (preference === 'local-dev-relay' || preference === 'auto' || modeOverride === 'local-relay') {
@@ -84,5 +64,5 @@ export async function createSignalingProvider(
     }
   }
 
-  return new PeerJSSignalingInfoProvider();
+  return createPeerJsInfoProvider();
 }

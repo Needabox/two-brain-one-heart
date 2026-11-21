@@ -43,9 +43,25 @@
   --tboh-shadow-btn-active: 0 1px 0 rgba(74, 53, 90, 0.22);
 }
 
+@keyframes tboh-screen-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tboh-screen-enter {
+  animation: tboh-screen-enter 0.14s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tboh-float,
-  .tboh-sparkle {
+  .tboh-sparkle,
+  .tboh-screen-enter {
     animation: none !important;
   }
 }

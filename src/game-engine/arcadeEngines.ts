@@ -59,19 +59,142 @@ import type {
   SanitizedSnapshotPayload,
 } from './types';
 
+interface ArcadeEngineAdapter<S extends ArcadeEngineState = ArcadeEngineState> {
+  create: (difficulty: DifficultyLevel, now: number) => S;
+  apply: (
+    state: S,
+    action: GameActionInput,
+    actor: 'host' | 'guest',
+  ) => { nextState: S; completedNow: boolean };
+  extractA: (state: S) => ArcadePlayerAView;
+  extractB: (state: S) => ArcadePlayerBView;
+}
+
+const defineAdapter = <S extends ArcadeEngineState>(
+  adapter: ArcadeEngineAdapter<S>,
+): ArcadeEngineAdapter => adapter as unknown as ArcadeEngineAdapter;
+
+const ARCADE_ADAPTERS: Record<ArcadeGameId, ArcadeEngineAdapter> = {
+  'rhythm-duo': defineAdapter({
+    create: createRhythmDuoState,
+    apply: (s, a, actor) =>
+      a.kind === 'common'
+        ? applyRhythmDuoAction(s, { kind: 'common', type: 'USE_HINT' })
+        : a.kind === 'rhythm-duo'
+          ? applyRhythmDuoAction(
+              s,
+              a.type === 'TAP_BEAT'
+                ? { kind: 'rhythm-duo', type: 'TAP_BEAT', actor, beatIndex: a.beatIndex, deltaMs: a.deltaMs }
+                : { kind: 'rhythm-duo', type: 'RETRY_ROUND' },
+            )
+          : { nextState: s, completedNow: false },
+    extractA: extractRhythmDuoAView,
+    extractB: extractRhythmDuoBView,
+  }),
+  'power-connection': defineAdapter({
+    create: createPowerConnectionState,
+    apply: (s, a) =>
+      a.kind === 'common'
+        ? applyPowerConnectionAction(s, { kind: 'common', type: 'USE_HINT' })
+        : a.kind === 'power-connection'
+          ? applyPowerConnectionAction(s, a)
+          : { nextState: s, completedNow: false },
+    extractA: extractPowerConnectionAView,
+    extractB: extractPowerConnectionBView,
+  }),
+  'dont-press-together': defineAdapter({
+    create: createDontPressState,
+    apply: (s, a, actor) =>
+      a.kind === 'common'
+        ? applyDontPressAction(s, { kind: 'common', type: 'USE_HINT' })
+        : a.kind === 'dont-press-together'
+          ? applyDontPressAction(
+              s,
+              a.type === 'PRESS_LOGIC_BUTTON'
+                ? { kind: 'dont-press-together', type: 'PRESS_LOGIC_BUTTON', actor, buttonId: a.buttonId }
+                : { kind: 'dont-press-together', type: 'RESET_LOGIC_PANEL' },
+            )
+          : { nextState: s, completedNow: false },
+    extractA: extractDontPressAView,
+    extractB: extractDontPressBView,
+  }),
+  'potion-lab': defineAdapter({
+    create: createPotionLabState,
+    apply: (s, a) =>
+      a.kind === 'common'
+        ? applyPotionLabAction(s, { kind: 'common', type: 'USE_HINT' })
+        : a.kind === 'potion-lab'
+          ? applyPotionLabAction(s, a)
+          : { nextState: s, completedNow: false },
+    extractA: extractPotionLabAView,
+    extractB: extractPotionLabBView,
+  }),
+  'mirror-moves': defineAdapter({
+    create: createMirrorMovesState,
+    apply: (s, a, actor) =>
+      a.kind === 'common'
+        ? applyMirrorMovesAction(s, { kind: 'common', type: 'USE_HINT' })
+        : a.kind === 'mirror-moves'
+          ? applyMirrorMovesAction(
+              s,
+              a.type === 'MOVE_MIRROR_CHAR'
+                ? { kind: 'mirror-moves', type: 'MOVE_MIRROR_CHAR', actor, direction: a.direction }
+                : { kind: 'mirror-moves', type: 'RESET_MIRROR_BOARD' },
+            )
+          : { nextState: s, completedNow: false },
+    extractA: extractMirrorMovesAView,
+    extractB: extractMirrorMovesBView,
+  }),
+  'draw-my-mind': defineAdapter({
+    create: createDrawMyMindState,
+    apply: (s, a, actor) => {
+      if (a.kind === 'common') return applyDrawMyMindAction(s, { kind: 'common', type: 'USE_HINT' });
+      if (a.kind !== 'draw-my-mind') return { nextState: s, completedNow: false };
+      if (a.type === 'TICK_DRAW_TIMER') {
+        return actor === 'host'
+          ? applyDrawMyMindAction(s, { kind: 'draw-my-mind', type: 'TICK_DRAW_TIMER' })
+          : { nextState: s, completedNow: false };
+      }
+      return applyDrawMyMindAction(s, { ...a, actor });
+    },
+    extractA: extractDrawMyMindAView,
+    extractB: extractDrawMyMindBView,
+  }),
+  'bridge-builder': defineAdapter({
+    create: createBridgeBuilderState,
+    apply: (s, a) =>
+      a.kind === 'common'
+        ? applyBridgeBuilderAction(s, { kind: 'common', type: 'USE_HINT' })
+        : a.kind === 'bridge-builder'
+          ? applyBridgeBuilderAction(s, a)
+          : { nextState: s, completedNow: false },
+    extractA: extractBridgeBuilderAView,
+    extractB: extractBridgeBuilderBView,
+  }),
+  'balloon-rescue': defineAdapter({
+    create: createBalloonRescueState,
+    apply: (s, a, actor) => {
+      if (a.kind === 'common') return applyBalloonRescueAction(s, { kind: 'common', type: 'USE_HINT' });
+      if (a.kind !== 'balloon-rescue') return { nextState: s, completedNow: false };
+      if (a.type === 'TICK_BALLOON') {
+        return actor === 'host'
+          ? applyBalloonRescueAction(s, { kind: 'balloon-rescue', type: 'TICK_BALLOON' })
+          : { nextState: s, completedNow: false };
+      }
+      if (a.type === 'RESET_BALLOON') {
+        return applyBalloonRescueAction(s, { kind: 'balloon-rescue', type: 'RESET_BALLOON' });
+      }
+      return applyBalloonRescueAction(s, { ...a, actor });
+    },
+    extractA: extractBalloonRescueAView,
+    extractB: extractBalloonRescueBView,
+  }),
+};
+
 export function isArcadeEngineState(
   state: GameEngineState,
 ): state is ArcadeEngineState {
-  return (
-    state.kind === 'rhythm-duo' ||
-    state.kind === 'power-connection' ||
-    state.kind === 'dont-press-together' ||
-    state.kind === 'potion-lab' ||
-    state.kind === 'mirror-moves' ||
-    state.kind === 'draw-my-mind' ||
-    state.kind === 'bridge-builder' ||
-    state.kind === 'balloon-rescue'
-  );
+  return state.kind in ARCADE_ADAPTERS;
 }
 
 export function createArcadeEngineState(
@@ -79,24 +202,7 @@ export function createArcadeEngineState(
   difficulty: DifficultyLevel,
   now: number = Date.now(),
 ): ArcadeEngineState {
-  switch (gameId) {
-    case 'rhythm-duo':
-      return createRhythmDuoState(difficulty, now);
-    case 'power-connection':
-      return createPowerConnectionState(difficulty, now);
-    case 'dont-press-together':
-      return createDontPressState(difficulty, now);
-    case 'potion-lab':
-      return createPotionLabState(difficulty, now);
-    case 'mirror-moves':
-      return createMirrorMovesState(difficulty, now);
-    case 'draw-my-mind':
-      return createDrawMyMindState(difficulty, now);
-    case 'bridge-builder':
-      return createBridgeBuilderState(difficulty, now);
-    case 'balloon-rescue':
-      return createBalloonRescueState(difficulty, now);
-  }
+  return ARCADE_ADAPTERS[gameId].create(difficulty, now);
 }
 
 export function applyArcadeEngineAction(
@@ -104,215 +210,19 @@ export function applyArcadeEngineAction(
   action: GameActionInput,
   trustedActor: 'host' | 'guest',
 ): { nextState: ArcadeEngineState; completedNow: boolean } {
-  const isHint = action.kind === 'common' && action.type === 'USE_HINT';
-
-  switch (state.kind) {
-    case 'rhythm-duo':
-      if (isHint) {
-        return applyRhythmDuoAction(state, { kind: 'common', type: 'USE_HINT' });
-      }
-      if (action.kind === 'rhythm-duo') {
-        return applyRhythmDuoAction(
-          state,
-          action.type === 'TAP_BEAT'
-            ? {
-                kind: 'rhythm-duo',
-                type: 'TAP_BEAT',
-                actor: trustedActor,
-                beatIndex: action.beatIndex,
-                deltaMs: action.deltaMs,
-              }
-            : { kind: 'rhythm-duo', type: 'RETRY_ROUND' },
-        );
-      }
-      return { nextState: state, completedNow: false };
-
-    case 'power-connection':
-      if (isHint) {
-        return applyPowerConnectionAction(state, { kind: 'common', type: 'USE_HINT' });
-      }
-      if (action.kind === 'power-connection') {
-        return applyPowerConnectionAction(state, action);
-      }
-      return { nextState: state, completedNow: false };
-
-    case 'dont-press-together':
-      if (isHint) {
-        return applyDontPressAction(state, { kind: 'common', type: 'USE_HINT' });
-      }
-      if (action.kind === 'dont-press-together') {
-        return applyDontPressAction(
-          state,
-          action.type === 'PRESS_LOGIC_BUTTON'
-            ? {
-                kind: 'dont-press-together',
-                type: 'PRESS_LOGIC_BUTTON',
-                actor: trustedActor,
-                buttonId: action.buttonId,
-              }
-            : { kind: 'dont-press-together', type: 'RESET_LOGIC_PANEL' },
-        );
-      }
-      return { nextState: state, completedNow: false };
-
-    case 'potion-lab':
-      if (isHint) {
-        return applyPotionLabAction(state, { kind: 'common', type: 'USE_HINT' });
-      }
-      if (action.kind === 'potion-lab') {
-        return applyPotionLabAction(state, action);
-      }
-      return { nextState: state, completedNow: false };
-
-    case 'mirror-moves':
-      if (isHint) {
-        return applyMirrorMovesAction(state, { kind: 'common', type: 'USE_HINT' });
-      }
-      if (action.kind === 'mirror-moves') {
-        return applyMirrorMovesAction(
-          state,
-          action.type === 'MOVE_MIRROR_CHAR'
-            ? {
-                kind: 'mirror-moves',
-                type: 'MOVE_MIRROR_CHAR',
-                actor: trustedActor,
-                direction: action.direction,
-              }
-            : { kind: 'mirror-moves', type: 'RESET_MIRROR_BOARD' },
-        );
-      }
-      return { nextState: state, completedNow: false };
-
-    case 'draw-my-mind':
-      if (isHint) {
-        return applyDrawMyMindAction(state, { kind: 'common', type: 'USE_HINT' });
-      }
-      if (action.kind === 'draw-my-mind') {
-        switch (action.type) {
-          case 'ADD_DRAW_STROKE':
-            return applyDrawMyMindAction(state, {
-              kind: 'draw-my-mind',
-              type: 'ADD_DRAW_STROKE',
-              actor: trustedActor,
-              stroke: action.stroke,
-            });
-          case 'CLEAR_DRAW_CANVAS':
-            return applyDrawMyMindAction(state, {
-              kind: 'draw-my-mind',
-              type: 'CLEAR_DRAW_CANVAS',
-              actor: trustedActor,
-            });
-          case 'SUBMIT_DRAW_GUESS':
-            return applyDrawMyMindAction(state, {
-              kind: 'draw-my-mind',
-              type: 'SUBMIT_DRAW_GUESS',
-              actor: trustedActor,
-              guess: action.guess,
-            });
-          case 'TICK_DRAW_TIMER':
-            if (trustedActor !== 'host') {
-              return { nextState: state, completedNow: false };
-            }
-            return applyDrawMyMindAction(state, {
-              kind: 'draw-my-mind',
-              type: 'TICK_DRAW_TIMER',
-            });
-        }
-      }
-      return { nextState: state, completedNow: false };
-
-    case 'bridge-builder':
-      if (isHint) {
-        return applyBridgeBuilderAction(state, { kind: 'common', type: 'USE_HINT' });
-      }
-      if (action.kind === 'bridge-builder') {
-        return applyBridgeBuilderAction(state, action);
-      }
-      return { nextState: state, completedNow: false };
-
-    case 'balloon-rescue':
-      if (isHint) {
-        return applyBalloonRescueAction(state, { kind: 'common', type: 'USE_HINT' });
-      }
-      if (action.kind === 'balloon-rescue') {
-        switch (action.type) {
-          case 'SET_BALLOON_STEER':
-            return applyBalloonRescueAction(state, {
-              kind: 'balloon-rescue',
-              type: 'SET_BALLOON_STEER',
-              actor: trustedActor,
-              steer: action.steer,
-            });
-          case 'SET_BALLOON_LIFT':
-            return applyBalloonRescueAction(state, {
-              kind: 'balloon-rescue',
-              type: 'SET_BALLOON_LIFT',
-              actor: trustedActor,
-              lift: action.lift,
-            });
-          case 'TICK_BALLOON':
-            if (trustedActor !== 'host') {
-              return { nextState: state, completedNow: false };
-            }
-            return applyBalloonRescueAction(state, {
-              kind: 'balloon-rescue',
-              type: 'TICK_BALLOON',
-            });
-          case 'RESET_BALLOON':
-            return applyBalloonRescueAction(state, {
-              kind: 'balloon-rescue',
-              type: 'RESET_BALLOON',
-            });
-        }
-      }
-      return { nextState: state, completedNow: false };
-  }
+  return ARCADE_ADAPTERS[state.kind].apply(state, action, trustedActor);
 }
 
 export function extractArcadePlayerAView(
   state: ArcadeEngineState,
 ): ArcadePlayerAView {
-  switch (state.kind) {
-    case 'rhythm-duo':
-      return extractRhythmDuoAView(state);
-    case 'power-connection':
-      return extractPowerConnectionAView(state);
-    case 'dont-press-together':
-      return extractDontPressAView(state);
-    case 'potion-lab':
-      return extractPotionLabAView(state);
-    case 'mirror-moves':
-      return extractMirrorMovesAView(state);
-    case 'draw-my-mind':
-      return extractDrawMyMindAView(state);
-    case 'bridge-builder':
-      return extractBridgeBuilderAView(state);
-    case 'balloon-rescue':
-      return extractBalloonRescueAView(state);
-  }
+  return ARCADE_ADAPTERS[state.kind].extractA(state);
 }
 
 export function extractArcadePlayerBView(
   state: ArcadeEngineState,
 ): ArcadePlayerBView {
-  switch (state.kind) {
-    case 'rhythm-duo':
-      return extractRhythmDuoBView(state);
-    case 'power-connection':
-      return extractPowerConnectionBView(state);
-    case 'dont-press-together':
-      return extractDontPressBView(state);
-    case 'potion-lab':
-      return extractPotionLabBView(state);
-    case 'mirror-moves':
-      return extractMirrorMovesBView(state);
-    case 'draw-my-mind':
-      return extractDrawMyMindBView(state);
-    case 'bridge-builder':
-      return extractBridgeBuilderBView(state);
-    case 'balloon-rescue':
-      return extractBalloonRescueBView(state);
-  }
+  return ARCADE_ADAPTERS[state.kind].extractB(state);
 }
 
 export function buildArcadeSnapshot(

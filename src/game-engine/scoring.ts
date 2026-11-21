@@ -85,6 +85,15 @@ export interface ScoringThresholds {
   threeStarMaxMs: number;
 }
 
+export function formatDuration(ms: number, roundSeconds: boolean = false): string {
+  const sec = roundSeconds
+    ? Math.max(1, Math.round(ms / 1000))
+    : Math.max(0, Math.floor(ms / 1000));
+  const min = Math.floor(sec / 60);
+  const rem = sec % 60;
+  return `${String(min).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+}
+
 export function calculateStars(
   meta: Pick<
     LevelMeta | ScoringThresholds,

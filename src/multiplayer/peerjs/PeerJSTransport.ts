@@ -1,9 +1,8 @@
 import Peer, { type DataConnection, type PeerJSOption } from 'peerjs';
+import { EnvelopeChannel } from '../EnvelopeChannel';
 import type { GameTransport, TransportStatus } from '../GameTransport';
 import {
   buildEnvelope,
-  EventDeduplicator,
-  parseMultiplayerEnvelope,
   type EventPayload,
   type MultiplayerEnvelope,
 } from '../protocol';
@@ -19,24 +18,16 @@ export function buildPeerJsOptions(): PeerJSOption {
   const customPath = (import.meta.env.VITE_PEER_PATH ?? '').toString().trim();
 
   const opts: PeerJSOption = {
-    config: {
-      iceServers: parseConfiguredIceServers(),
-    },
+    config: { iceServers: parseConfiguredIceServers() },
     debug: 0,
   };
 
   if (customHost) {
     opts.host = customHost;
     opts.secure = true;
-    if (customPortRaw) {
-      const parsedPort = Number(customPortRaw);
-      if (Number.isFinite(parsedPort) && parsedPort > 0) {
-        opts.port = parsedPort;
-      }
-    }
-    if (customPath) {
-      opts.path = customPath;
-    }
+    const parsedPort = Number(customPortRaw);
+    if (Number.isFinite(parsedPort) && parsedPort > 0) opts.port = parsedPort;
+    if (customPath) opts.path = customPath;
   }
 
   return opts;
@@ -52,20 +43,17 @@ export interface PeerJSTransportOptions {
 
 export class PeerJSTransport implements GameTransport {
   private readonly opts: PeerJSTransportOptions;
+  private readonly channel: EnvelopeChannel;
   private peer: Peer | null = null;
   private conn: DataConnection | null = null;
   private activeGuestPlayerId: string | null = null;
-  private outboundQueue: MultiplayerEnvelope[] = [];
-  private seq = 1;
-  private readonly dedup = new EventDeduplicator(500);
-  private pingTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
-  private lastPongAt = 0;
   private disposed = false;
 
   constructor(opts: PeerJSTransportOptions) {
     this.opts = opts;
+    this.channel = new EnvelopeChannel(opts);
   }
 
   public startWaiting(): void {
@@ -73,6 +61,12 @@ export class PeerJSTransport implements GameTransport {
       this.opts.role === 'host' ? 'waiting-for-partner' : 'connecting',
     );
   }
+
+  private rawSend = (serialized: string): boolean => {
+    if (!this.conn?.open) return false;
+    void this.conn.send(serialized);
+    return true;
+  };
 
   public async createAsHost(): Promise<void> {
     if (this.disposed) return;
@@ -102,20 +96,20 @@ export class PeerJSTransport implements GameTransport {
       });
 
       peer.on('disconnected', () => {
-        if (!this.disposed && !peer.destroyed) {
-          peer.reconnect();
-        }
+        if (!this.disposed && !peer.destroyed) peer.reconnect();
       });
 
       peer.on('error', (err) => {
         if (!settled) {
           settled = true;
           clearTimeout(timeout);
-          if (err.type === 'unavailable-id') {
-            reject(new Error('That room code is temporarily in use. Please try again.'));
-          } else {
-            reject(new Error(err.message || 'PeerJS host registration failed.'));
-          }
+          reject(
+            new Error(
+              err.type === 'unavailable-id'
+                ? 'That room code is temporarily in use. Please try again.'
+                : err.message || 'PeerJS host registration failed.',
+            ),
+          );
           return;
         }
         if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
@@ -134,22 +128,20 @@ export class PeerJSTransport implements GameTransport {
       const peer = new Peer(`tboh-g-${this.opts.selfPeerId.slice(0, 12)}`, buildPeerJsOptions());
       this.peer = peer;
 
-      const timeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        reject(
-          new Error(
-            'Connection timed out. Check the room code, or if on strict mobile NAT/firewall try Wi-Fi or a TURN server.',
-          ),
-        );
-      }, 15_000);
-
       const failOnce = (message: string) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
         reject(new Error(message));
       };
+
+      const timeout = setTimeout(
+        () =>
+          failOnce(
+            'Connection timed out. Check the room code, or if on strict mobile NAT/firewall try Wi-Fi or a TURN server.',
+          ),
+        15_000,
+      );
 
       peer.on('open', () => {
         if (this.disposed) return;
@@ -168,9 +160,7 @@ export class PeerJSTransport implements GameTransport {
       });
 
       peer.on('disconnected', () => {
-        if (!this.disposed && !peer.destroyed) {
-          peer.reconnect();
-        }
+        if (!this.disposed && !peer.destroyed) peer.reconnect();
       });
 
       peer.on('error', (err) => {
@@ -193,17 +183,15 @@ export class PeerJSTransport implements GameTransport {
     const incomingPlayerId = meta?.playerId ?? incomingConn.peer;
 
     if (
-      this.conn &&
-      this.conn.open &&
+      this.conn?.open &&
       this.activeGuestPlayerId &&
       this.activeGuestPlayerId !== incomingPlayerId
     ) {
-      // Room already full (2 players max)
       incomingConn.on('open', () => {
         const leaveEnv = buildEnvelope(
           this.opts.roomCode,
           this.opts.selfPeerId,
-          this.seq++,
+          this.channel.nextSequence(),
           'ROOM_LEAVE',
           { reason: 'This cozy room already has 2 players.' },
         );
@@ -231,41 +219,22 @@ export class PeerJSTransport implements GameTransport {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
       }
-      this.lastPongAt = Date.now();
       this.opts.onStatusChange('connected');
-      this.flushOutboundQueue();
-      this.startHeartbeat();
+      this.channel.flush(this.rawSend);
+      this.channel.startHeartbeat((sentAt) => {
+        if (this.conn?.open) this.send('PING', { sentAt });
+      });
       onFirstOpen?.();
     });
 
     conn.on('data', (rawData) => {
-      if (this.disposed) return;
-      try {
-        const parsedJson =
-          typeof rawData === 'string' ? (JSON.parse(rawData) as unknown) : rawData;
-        const envelope = parseMultiplayerEnvelope(parsedJson);
-        if (!envelope) return;
-        if (envelope.roomId !== this.opts.roomCode) return;
-        if (this.dedup.hasSeenOrMark(envelope.eventId)) return;
-
-        if (envelope.type === 'PING') {
-          this.send('PONG', { echoedSentAt: envelope.payload.sentAt });
-          return;
-        }
-        if (envelope.type === 'PONG') {
-          this.lastPongAt = Date.now();
-          return;
-        }
-
-        this.opts.onEnvelope(envelope);
-      } catch {
-        // Ignore malformed messages
-      }
+      this.channel.handleRawData(rawData, (echoedSentAt) =>
+        this.send('PONG', { echoedSentAt }),
+      );
     });
 
     conn.on('iceStateChanged', (state) => {
-      if (this.disposed) return;
-      if (state === 'failed') {
+      if (!this.disposed && state === 'failed') {
         this.opts.onStatusChange(
           'error',
           'WebRTC NAT traversal failed (strict firewall/CGNAT). Try Wi-Fi or configure a TURN server in VITE_ICE_SERVERS.',
@@ -275,7 +244,7 @@ export class PeerJSTransport implements GameTransport {
 
     conn.on('close', () => {
       if (this.disposed) return;
-      this.stopHeartbeat();
+      this.channel.stopHeartbeat();
       this.opts.onStatusChange('reconnecting', 'Partner connection closed. Waiting to reconnect...');
       if (this.opts.role === 'guest') {
         this.scheduleGuestReconnect();
@@ -283,8 +252,9 @@ export class PeerJSTransport implements GameTransport {
     });
 
     conn.on('error', () => {
-      if (this.disposed) return;
-      this.opts.onStatusChange('reconnecting', 'Temporary peer channel issue...');
+      if (!this.disposed) {
+        this.opts.onStatusChange('reconnecting', 'Temporary peer channel issue...');
+      }
     });
   }
 
@@ -312,62 +282,11 @@ export class PeerJSTransport implements GameTransport {
     type: T,
     payload: EventPayload<T>,
   ): MultiplayerEnvelope {
-    const envelope = buildEnvelope(
-      this.opts.roomCode,
-      this.opts.selfPeerId,
-      this.seq++,
-      type,
-      payload,
-    );
-
-    if (this.conn && this.conn.open) {
-      void this.conn.send(JSON.stringify(envelope));
-    } else if (type !== 'PING' && type !== 'PONG') {
-      this.outboundQueue.push(envelope);
-      if (this.outboundQueue.length > 50) {
-        this.outboundQueue.shift();
-      }
-    }
-
-    return envelope;
-  }
-
-  private flushOutboundQueue(): void {
-    if (!this.conn || !this.conn.open) return;
-    while (this.outboundQueue.length > 0) {
-      const env = this.outboundQueue.shift();
-      if (env) {
-        void this.conn.send(JSON.stringify(env));
-      }
-    }
-  }
-
-  private startHeartbeat(): void {
-    this.stopHeartbeat();
-    this.lastPongAt = Date.now();
-    this.pingTimer = setInterval(() => {
-      if (this.disposed) return;
-      if (this.conn && this.conn.open) {
-        this.send('PING', { sentAt: Date.now() });
-      }
-      const silenceMs = Date.now() - this.lastPongAt;
-      if (silenceMs > 22_000) {
-        this.opts.onStatusChange('disconnected', 'Partner timed out.');
-      } else if (silenceMs > 10_000) {
-        this.opts.onStatusChange('reconnecting', 'Waiting for partner heartbeat...');
-      }
-    }, 4000);
-  }
-
-  private stopHeartbeat(): void {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
-    }
+    return this.channel.send(type, payload, this.rawSend);
   }
 
   private teardownConnectionOnly(): void {
-    this.stopHeartbeat();
+    this.channel.stopHeartbeat();
     if (this.conn) {
       this.conn.removeAllListeners();
       try {
@@ -390,6 +309,7 @@ export class PeerJSTransport implements GameTransport {
       this.reconnectTimer = null;
     }
     this.teardownConnectionOnly();
+    this.channel.dispose();
     if (this.peer) {
       this.peer.removeAllListeners();
       try {
@@ -399,6 +319,5 @@ export class PeerJSTransport implements GameTransport {
       }
       this.peer = null;
     }
-    this.outboundQueue = [];
   }
 }
