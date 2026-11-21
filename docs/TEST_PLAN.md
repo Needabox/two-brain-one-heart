@@ -32,13 +32,24 @@ All automated tests run via `npm test` (`vitest run`).
   - Mistakes, hints, and timer accumulate across both stages.
   - Clue isolation holds in both stages.
 
+- **Arcade Engines (Games 06–13 across Easy / Medium / Hard):**
+  - `Rhythm Duo`: asymmetrical `patternA` vs `patternB` isolation, drift-safe beat grading, wrong rest beat mistake increment, Hint window widening, round re-sync.
+  - `Power Connection`: multi-stage algorithmic BFS wire connectivity across 3×3 / 4×4 / 5×5 boards, incomplete submit rejection, tile rotation lock Hints, reset.
+  - `Don't Press Together`: deterministic multi-variable transitions, hazard dependency & immediate-partner-follow collision guard, Target goal isolation from Player B, reset & Hint.
+  - `Potion Lab`: decoy separation, sequence matching, cauldron add/remove/clear, Hint slot reveal, strict isolation of `recipe` from Player B.
+  - `Mirror Moves`: automated BFS state-space solver verifies all 9 twin stages (`4×4`, `5×5`, `6×6` with hold plates, latch switches & twin sync pads) are solvable, wall/lock mistakes & reset.
+  - `Draw My Mind`: role alternation between rounds, stroke clamping & clearing, timer backup word swap, strict verification that `secretWord` is `null` on guessing client & UI.
+  - `Bridge Builder`: deterministic BFS platform connectivity & blueprint matching across rock obstacles and inventory budgets, Hint lock, reset.
+  - `Balloon Rescue`: fixed-step `TICK_BALLOON` kinematics, deterministic triangular-wave moving obstacles, boundary/storm collision reset, Calm-Wind Hint, full landing progression.
+
 ### Scoring, XP, Unlocks & Persistence
 - 1★ / 2★ / 3★ thresholds: completion alone = 1★; within mistake target = 2★; within mistake + time + 0 hints = 3★.
-- Replay never reduces existing best stars (`3★ -> 1★` replay preserves `3★`).
-- Level `N+1` unlocks when Level `N` reaches `>= 1` star.
+- Replay never reduces existing best stars (`3★ -> 1★` replay preserves `3★`) in both Campaign & Arcade (`arcadeRecords`).
+- Campaign Level `N+1` unlocks when Level `N` reaches `>= 1` star (Arcade clears do not mutate Campaign unlocks).
+- Backward compatibility verified for legacy `tboh_progression_v1` saves missing `arcadeRecords`.
 - Duplicate `completionId` / `LEVEL_COMPLETE` event does not grant duplicate XP or mutate stats twice.
 - Cosmetic unlock milestones unlock accurately at `2★`, `5★`, `8★`, `12★`.
-- Peer progress reconciliation picks `Math.max` per level stars, unlocked level, and XP cleanly.
+- Peer progress reconciliation picks `Math.max` per stars/score/level/XP cleanly.
 
 ### Multiplayer Protocol & Reconnection
 - Zod validation accepts all 14 required event types (`ROOM_JOIN`, `ROOM_LEAVE`, `PLAYER_READY`, `PLAYER_STATE`, `GAME_START`, `GAME_ACTION`, `GAME_STATE_SNAPSHOT`, `LEVEL_COMPLETE`, `LEVEL_FAILED`, `LEVEL_RESTART`, `PING`, `PONG`, `RECONNECT_REQUEST`, `RECONNECT_ACCEPTED`).
@@ -85,6 +96,6 @@ All automated tests run via `npm test` (`vitest run`).
 ## 3. Executed Verification Status
 
 - **Automated Verification (`npm run typecheck && npm run lint && npm test && npm run build`):**
-  - Executed after final edit across 7 Vitest suites (26 tests total) + strict TypeScript + ESLint + production Vite build.
+  - Executed after final edit across 10 Vitest files (66 tests total covering all 5 Campaign games, all 8 Arcade games, scoring & legacy save compatibility, Zod protocol validation, reconnection/e2e Arcade flow, and UI clue isolation) + strict TypeScript + ESLint + production Vite build.
 - **Live Two-Browser Chrome DevTools Session:**
-  - Attempted against `http://localhost:5173/`, blocked on host machine because Chrome remote debugging (`chrome://inspect/#remote-debugging` / `DevToolsActivePort`) was not active. Run `npm run dev` locally in two browser windows (or enable Chrome remote debugging to let the browser subagent run the live two-tab walkthrough) to execute Section 2 interactively.
+  - Not re-run here because Chrome remote debugging (`DevToolsActivePort`) was unavailable on the sandboxed host; run `npm run dev` locally in two browser windows (or deploy pure static build to Vercel via PeerJS) to verify interactive P2P play across devices.

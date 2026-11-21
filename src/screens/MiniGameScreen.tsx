@@ -5,15 +5,25 @@ import { ConnectionPill } from '../components/ConnectionPill';
 import { CuteButton } from '../components/CuteButton';
 import { PastelCard } from '../components/PastelCard';
 import { getLevelMeta } from '../game-engine/puzzles';
+import { getArcadeGameEntry } from '../game-engine/registry';
 import type {
   GameActionInput,
+  LaunchTarget,
   LevelId,
   PlayerAView,
   SanitizedSnapshotPayload,
 } from '../game-engine/types';
+import { BalloonRescueGame } from '../games/balloon-rescue/BalloonRescueGame';
+import { BridgeBuilderGame } from '../games/bridge-builder/BridgeBuilderGame';
+import { DontPressTogetherGame } from '../games/dont-press-together/DontPressTogetherGame';
+import { DrawMyMindGame } from '../games/draw-my-mind/DrawMyMindGame';
 import { LostTogetherGame } from '../games/lost-together/LostTogetherGame';
 import { MemorySyncGame } from '../games/memory-sync/MemorySyncGame';
+import { MirrorMovesGame } from '../games/mirror-moves/MirrorMovesGame';
 import { MixedChallengeGame } from '../games/mixed-challenge/MixedChallengeGame';
+import { PotionLabGame } from '../games/potion-lab/PotionLabGame';
+import { PowerConnectionGame } from '../games/power-connection/PowerConnectionGame';
+import { RhythmDuoGame } from '../games/rhythm-duo/RhythmDuoGame';
 import { SecretLanguageGame } from '../games/secret-language/SecretLanguageGame';
 import { ShapeItGame } from '../games/shape-it/ShapeItGame';
 import type { SignalingModeInfo } from '../multiplayer/signaling/SignalingProvider';
@@ -21,6 +31,7 @@ import type { TransportStatus } from '../multiplayer/webrtc/WebRTCTransport';
 
 interface MiniGameScreenProps {
   levelId: LevelId;
+  target?: LaunchTarget;
   role: 'host' | 'guest';
   playerAView: PlayerAView | null;
   snapshot: SanitizedSnapshotPayload | null;
@@ -40,6 +51,7 @@ function formatDuration(ms: number): string {
 
 export function MiniGameScreen({
   levelId,
+  target,
   role,
   playerAView,
   snapshot,
@@ -51,7 +63,13 @@ export function MiniGameScreen({
 }: MiniGameScreenProps) {
   const [confirmExitOpen, setConfirmExitOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const resolvedTarget: LaunchTarget =
+    target ?? snapshot?.summary.target ?? { mode: 'campaign', levelId };
   const meta = getLevelMeta(levelId);
+  const arcadeEntry =
+    resolvedTarget.mode === 'arcade'
+      ? getArcadeGameEntry(resolvedTarget.gameId)
+      : null;
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
@@ -69,6 +87,105 @@ export function MiniGameScreen({
 
   const renderGame = () => {
     const bView = snapshot?.playerBView ?? null;
+
+    if (resolvedTarget.mode === 'arcade') {
+      switch (resolvedTarget.gameId) {
+        case 'rhythm-duo':
+          return (
+            <RhythmDuoGame
+              role={role}
+              playerAView={playerAView?.kind === 'rhythm-duo' ? playerAView : null}
+              playerBView={bView?.kind === 'rhythm-duo' ? bView : null}
+              onAction={onAction}
+            />
+          );
+        case 'power-connection':
+          return (
+            <PowerConnectionGame
+              role={role}
+              playerAView={
+                playerAView?.kind === 'power-connection' ? playerAView : null
+              }
+              playerBView={bView?.kind === 'power-connection' ? bView : null}
+              onAction={onAction}
+            />
+          );
+        case 'dont-press-together':
+          return (
+            <DontPressTogetherGame
+              role={role}
+              playerAView={
+                playerAView?.kind === 'dont-press-together' ? playerAView : null
+              }
+              playerBView={bView?.kind === 'dont-press-together' ? bView : null}
+              onAction={onAction}
+            />
+          );
+        case 'potion-lab':
+          return (
+            <PotionLabGame
+              role={role}
+              playerAView={playerAView?.kind === 'potion-lab' ? playerAView : null}
+              playerBView={bView?.kind === 'potion-lab' ? bView : null}
+              onAction={onAction}
+            />
+          );
+        case 'mirror-moves':
+          return (
+            <MirrorMovesGame
+              role={role}
+              view={
+                role === 'host'
+                  ? playerAView?.kind === 'mirror-moves'
+                    ? playerAView
+                    : null
+                  : bView?.kind === 'mirror-moves'
+                    ? bView
+                    : null
+              }
+              onAction={onAction}
+            />
+          );
+        case 'draw-my-mind':
+          return (
+            <DrawMyMindGame
+              role={role}
+              view={
+                role === 'host'
+                  ? playerAView?.kind === 'draw-my-mind'
+                    ? playerAView
+                    : null
+                  : bView?.kind === 'draw-my-mind'
+                    ? bView
+                    : null
+              }
+              onAction={onAction}
+            />
+          );
+        case 'bridge-builder':
+          return (
+            <BridgeBuilderGame
+              role={role}
+              playerAView={
+                playerAView?.kind === 'bridge-builder' ? playerAView : null
+              }
+              playerBView={bView?.kind === 'bridge-builder' ? bView : null}
+              onAction={onAction}
+            />
+          );
+        case 'balloon-rescue':
+          return (
+            <BalloonRescueGame
+              role={role}
+              playerAView={
+                playerAView?.kind === 'balloon-rescue' ? playerAView : null
+              }
+              playerBView={bView?.kind === 'balloon-rescue' ? bView : null}
+              onAction={onAction}
+            />
+          );
+      }
+    }
 
     if (meta.miniGame === 'memory-sync') {
       return (
@@ -120,6 +237,14 @@ export function MiniGameScreen({
     );
   };
 
+  const roleBadgeLabel = arcadeEntry
+    ? role === 'host'
+      ? `Player A • ${arcadeEntry.playerARole}`
+      : `Player B • ${arcadeEntry.playerBRole}`
+    : role === 'host'
+      ? 'Player A • Clue Holder'
+      : 'Player B • Controller';
+
   return (
     <div className="mx-auto w-full max-w-2xl space-y-3 py-1">
       {/* HUD Header */}
@@ -127,10 +252,12 @@ export function MiniGameScreen({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#9B8CFF]">
-              Level {meta.id} • The Cozy Room
+              {arcadeEntry && resolvedTarget.mode === 'arcade'
+                ? `Arcade • ${arcadeEntry.category} • ${resolvedTarget.difficulty}`
+                : `Level ${meta.id} • The Cozy Room`}
             </p>
             <h1 className="font-display text-lg font-bold text-[#4A355A] sm:text-xl">
-              {meta.name}
+              {arcadeEntry ? arcadeEntry.name : meta.name}
             </h1>
           </div>
 
@@ -166,7 +293,7 @@ export function MiniGameScreen({
                   : 'bg-[#DFF3FF] text-[#1D5587]'
               }`}
             >
-              {role === 'host' ? 'Player A • Clue Holder' : 'Player B • Controller'}
+              {roleBadgeLabel}
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF2C4] px-2.5 py-1 text-[#7D5200]">
               <Clock className="h-3.5 w-3.5" aria-hidden="true" />

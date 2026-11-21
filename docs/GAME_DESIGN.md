@@ -135,3 +135,20 @@ All 5 levels use deterministic, pre-validated puzzle data (zero unverified rando
   - `reconciledUnlockedLevel = Math.max(hostUnlocked, guestUnlocked)`
   - `reconciledXp = Math.max(hostXp, guestXp)`
 - Both peers adopt the reconciled shared campaign unlock/best-star state during the session and save non-regressing improvements locally.
+
+---
+
+## 5. Arcade Mode — 8 New Co-op Mini-Games (Games 06–13)
+
+Unlocked immediately alongside World 1 Campaign, selectable by the Host from **Arcade (8)** (`ArcadeSelectScreen`) across **Easy / Medium / Hard** difficulties and 6 filterable categories (`Memory`, `Logic`, `Coordination`, `Creativity`, `Timing`, `Spatial Reasoning`):
+
+6. **Rhythm Duo (`Timing`):** Split complementary beat tracks (`patternA` vs `patternB`) over 3 rounds (4, 6, and 8 beats with rests/syncopation), drift-safe local round countdown anchors, `Perfect / Good / Miss` grading, Hint widened timing window, and Re-sync countdown.
+7. **Power Connection (`Logic`):** 3×3 / 4×4 / 5×5 multi-branch circuit puzzles across 3 stages. Player A holds the target blueprint; Player B rotates wire tiles clockwise (`RESET_CIRCUIT`, `SUBMIT_CIRCUIT`) with algorithmic BFS connectivity & dangling-wire validation.
+8. **Don't Press Together (`Logic`):** Asymmetric button control panels across 2 / 3 / 4 shared variables and 3 stages. Player A holds target goals + Switches; Player B holds color selector controls + Hazard Safety Manual (`forbidImmediatePartnerFollow` & prerequisite checks in Hard mode).
+9. **Potion Lab (`Memory`):** 3 recipe rounds per difficulty (3, 4, and 5 ingredients against shelf decoys). Player A reads the ordered alchemist recipe with color & property cues; Player B adds/removes/clears bottles and brews with exact sequence validation.
+10. **Mirror Moves (`Spatial Reasoning`):** Separate 4×4 / 5×5 / 6×6 twin boards across 3 stages with `hold-plate` / `hold-door`, `latch-switch` / `latch-door`, and `sync-pad` / `sync-door` mechanics. Touch D-pad + keyboard controls, simultaneous Goal requirement, and BFS solver Hint.
+11. **Draw My Mind (`Creativity`):** Synchronized `320×240` HTML `<canvas>` (colors, brush sizes, eraser, clear, throttled batched strokes). Round 1 A draws & B guesses, alternating drawer/guesser roles every round across predefined word pools (`SUN`, `PENGUIN`, `DAYDREAM`, etc.), countdown timer + Hint letter reveals, and strict nulling of `secretWord` on the guessing client.
+12. **Bridge Builder (`Spatial Reasoning`):** Deterministic cliff-to-cliff grid construction (3 / 5 / 7 pieces, rock obstacles, strict material inventory) checked via BFS port connectivity + blueprint structure match. Player A holds the blueprint; Player B places/rotates/removes `Deck`, `Ramp`, and `Truss` pieces.
+13. **Balloon Rescue (`Coordination`):** Fixed-step deterministic sky arena (`100×60` world coordinates, `180ms` Host tick). Player A steers horizontal Left/Glide/Right; Player B fires vertical Rise/Hover/Sink burner through static & oscillating storm clouds with wind drift, countdown, collision reset, and Calm-Wind Hint.
+
+Arcade completions award stars (`1–3★`), calculate scaled `score` (`calculateArcadeScore`), grant XP (`calculateXpAward`) + idempotent `completionId` tracking, and preserve `arcadeRecords` best stars/score/time without overwriting or altering Campaign `unlockedLevelId`.

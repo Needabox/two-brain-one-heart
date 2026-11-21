@@ -29,20 +29,28 @@ Inspected workspace root: `/Users/muhammadrafli/Coding/tailwind/two-brain-one-he
 
 ## 3. MVP Scope & Explicit Boundaries
 
-### Included in MVP
-- **1 World:** *The Cozy Room*
-- **5 Playable Deterministic Levels:**
+### Included in Playable Build (13 Co-op Modes)
+- **World 1 Campaign (*The Cozy Room*) — 5 Sequential Levels:**
   1. Memory Sync (Easy)
   2. Secret Language (Easy)
   3. Lost Together (Medium)
   4. Shape It! (Medium)
   5. Mixed Challenge (Hard — combines Secret Language + Lost Together)
-- Private room creation & join via short room code, lobby with Ready toggles, host level selection, and connection status indicators.
+- **Arcade Mode — 8 Asymmetric Mini-Games (Easy / Medium / Hard, Unlocked by Default):**
+  6. Rhythm Duo (Timing)
+  7. Power Connection (Logic)
+  8. Don't Press Together (Logic)
+  9. Potion Lab (Memory)
+  10. Mirror Moves (Spatial Reasoning)
+  11. Draw My Mind (Creativity)
+  12. Bridge Builder (Spatial Reasoning)
+  13. Balloon Rescue (Coordination)
+- Private room creation & join via short room code, lobby with Ready toggles, host Campaign & Arcade launcher, and connection status indicators.
 - Real-time P2P multiplayer synchronization over WebRTC `RTCDataChannel` with 100% pure frontend options:
   - Cross-device pure static hosting (Vercel): `PeerJSTransport` using PeerJS Cloud (`0.peerjs.com`) WebSocket brokering for 6-character room codes across separate devices — zero custom backend, zero database, zero Supabase.
   - Same-browser two-tab play: `BroadcastChannelSignalingProvider`.
   - Local development: `LocalDevHttpSignalingProvider` (Vite dev server SSE+POST relay for cross-browser / LAN testing with zero external credentials).
-- Shared progression: 1–3 stars per level, XP, sequential level unlocks, replay without star loss, and idempotent reward grants.
+- Shared progression: 1–3 stars per Campaign level & Arcade best records (stars, score, fastest time, completions), shared XP, sequential Campaign unlocks, replay without star loss, and idempotent reward grants.
 - Canonical character selection (Character A and Character B) plus 4 unlockable visual cosmetic accessories that do not alter gameplay or base character design.
 - Reconnection handling (heartbeat ping/pong, disconnect banner, `RECONNECT_REQUEST` / `RECONNECT_ACCEPTED` + `GAME_STATE_SNAPSHOT` state recovery).
 - LocalStorage persistence per device with deterministic peer reconciliation.

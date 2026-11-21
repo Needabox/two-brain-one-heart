@@ -39,3 +39,36 @@
 
 ### Phase 10 — Final Audit Against Definition of Done *(Completed)*
 - Audited against `ANTIGRAVITY_PROMPT.md §12` and documented live Chrome remote-debugging prerequisite plus production Supabase + TURN configuration requirements.
+
+---
+
+## Expansion Plan — 8 New Arcade Mini-Games & Arcade Mode
+
+### Phase 1 (Expansion) — Codebase Audit & Architecture Blueprint *(Completed)*
+- **Existing Architecture:** Pure TypeScript deterministic engine (`src/game-engine/{types,puzzles,engines,scoring}.ts`), host-authoritative state machine with clue-isolated projections (`extractPlayerAView` / `extractPlayerBView`), `GameTransport` abstraction (`PeerJSTransport` + `WebRTCTransport`), Zod-validated `PROTOCOL_VERSION = 1` envelopes, and `localStorage`/`sessionStorage` persistence.
+- **Registry & Navigation Analysis:** Campaign Levels 1–5 are defined in `LEVEL_METADATA` (`src/game-engine/puzzles.ts`) and launched via `useMultiplayerRoom` using numeric `LevelId (1..5)`. Adding a unified `GAME_REGISTRY` and `LaunchTarget` (`campaign` vs `arcade`) lets both Campaign (World 1) and Arcade Mode (8 new games across 6 categories with Easy/Medium/Hard difficulties) share Lobby, Ready checks, `MiniGameScreen`, `LevelResultScreen`, XP, and reconnection without touching Campaign Levels 1–5.
+- **Protocol & Bidirectional Input Analysis:** Existing games mostly send `GAME_ACTION` from Guest -> Host. New games (`rhythm-duo`, `dont-press-together`, `mirror-moves`, `draw-my-mind` Round 2 role swap, `balloon-rescue`) require **both** Host and Guest actions (`playerRole: 'host' | 'guest'` passed into pure `applyArcadeAction`!), synchronized countdown origins resilient to clock drift, and throttled batched canvas strokes for `draw-my-mind`.
+- **Backward Compatibility Risk & Mitigation:** Existing `ProgressionStateSchema` rejects missing fields if non-optional keys are added. Adding `arcadeRecords` as `.optional().default({})` guarantees existing `tboh_progression_v1` `localStorage` data loads cleanly with zero progress loss while keeping a single shared `xp` and `processedCompletionIds` ledger.
+
+### Phase 2 (Expansion) — Arcade Foundation *(Completed)*
+- Defined `ArcadeGameId`, `DifficultyLevel`, `GameCategory`, `LaunchTarget`, `ArcadeOutcomeMeta`, and central `ARCADE_GAME_REGISTRY` (`src/game-engine/registry.ts`).
+- Extended `ProgressionState` with backward-compatible `arcadeRecords` (`.optional().default({})`), added `ArcadeSelectScreen`, wired Landing/Lobby/Result Arcade navigation, and preserved existing Campaign progression.
+
+### Phase 3 (Expansion) — 8 Pure Mini-Game Engines & Validators *(Completed)*
+- Implemented isolated `types.ts`, `config.ts`, `validator.ts`, and `engine.ts` modules under `src/games/<game-id>/` for all 8 games (`rhythm-duo`, `power-connection`, `dont-press-together`, `potion-lab`, `mirror-moves`, `draw-my-mind`, `bridge-builder`, `balloon-rescue`).
+
+### Phase 4 (Expansion) — Multiplayer Protocol & Clue Isolation Wiring *(Completed)*
+- Wired all 8 engines into `src/game-engine/arcadeEngines.ts`, Zod `GameActionInputSchema`, `SanitizedSnapshotSchema`, and `useMultiplayerRoom` (with server/host `trustedActor` identity enforcement, fixed-step `180ms` simulation tick for `balloon-rescue`, and `1000ms` timer tick for `draw-my-mind`).
+
+### Phase 5 (Expansion) — UI Components & Local SVG Assets *(Completed)*
+- Created 8 thumbnail icons (`public/assets/icons/minigame-*.svg`) and 8 potion bottle SVGs (`public/assets/props/potion-*.svg`).
+- Built responsive (`>= 360px`, `>= 44px` touch targets, reduced-motion & sound aware) game UI components and integrated them into `MiniGameScreen.tsx`.
+
+### Phase 6 (Expansion) — Progression, Replay, Stars & XP Parity *(Completed)*
+- Connected Arcade best stars/score/time tracking, shared XP calculation, idempotent `completionId` deduplication, replay retention, legacy save compatibility, and peer reconciliation.
+
+### Phase 7 (Expansion) — Comprehensive Tests & Verification *(Completed)*
+- Added 30 deterministic engine tests across all 8 new games (including BFS solvability checks on all Mirror Moves boards), protocol round-trip coverage, legacy & Arcade scoring tests, UI clue isolation tests, and two-peer session sync verification.
+
+### Phase 8 (Expansion) — Documentation Sync *(Completed)*
+- Updated `PROJECT_CONTEXT.md`, `GAME_DESIGN.md`, `ARCHITECTURE.md`, `ASSET_GUIDE.md`, `IMPLEMENTATION_PLAN.md`, `TEST_PLAN.md`, and `README.md` covering all 13 playable game modes.

@@ -49,16 +49,14 @@ Source boards:
 - `heart-chest.svg` — Locked/unlocked cozy heart treasure chest for Level 5 & completion celebration.
 - `golden-key.svg` — Cozy chunky golden key prop for Lost Together & Secret Language.
 - `potted-plant.svg` — Small smiling/leafy pastel plant prop for Cozy Room map tiles.
+- `potion-moon-dew.svg`, `potion-sun-berry.svg`, `potion-star-dust.svg`, `potion-mint-leaf.svg`, `potion-rose-nectar.svg`, `potion-honey-drop.svg`, `potion-frost-plum.svg`, `potion-ember-spice.svg` — 8 distinct silhouette-differentiated alchemist potion bottles for Potion Lab.
 
 ### `public/assets/icons/`
 - `logo-heart-emblem.svg` — Clean twin-brain / pastel heart crest (no baked text, paired with crisp accessible HTML/SVG title lockup).
 - `star-filled.svg` / `star-empty.svg` — Chubby kawaii 5-point stars with warm plum outline.
 - `heart-xp.svg` — Cozy pink heart badge for XP/duo meter.
-- `minigame-memory.svg` — Twin pastel cards emblem.
-- `minigame-secret.svg` — Symbol tablet emblem.
-- `minigame-lost.svg` — Maze path + compass emblem.
-- `minigame-shape.svg` — Tangram/polyomino block emblem.
-- `minigame-mixed.svg` — Heart lock + key emblem.
+- `minigame-memory.svg`, `minigame-secret.svg`, `minigame-lost.svg`, `minigame-shape.svg`, `minigame-mixed.svg` — Campaign Level 1–5 emblems.
+- `minigame-rhythm.svg`, `minigame-power.svg`, `minigame-buttons.svg`, `minigame-potion.svg`, `minigame-mirror.svg`, `minigame-draw.svg`, `minigame-bridge.svg`, `minigame-balloon.svg` — Arcade Game 06–13 emblems.
 
 ### `public/assets/effects/`
 - `sparkle-cluster.svg` — Pastel four-point stars and mini hearts for level complete / hover-free celebration bursts.

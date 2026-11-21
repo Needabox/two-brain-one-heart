@@ -3,10 +3,17 @@ import {
   INITIAL_PROGRESSION_STATE,
   type ProgressionState,
 } from '../../game-engine/scoring';
-import type { CharacterId, GameEngineState, LevelId, LevelOutcome } from '../../game-engine/types';
+import type {
+  CharacterId,
+  GameEngineState,
+  LaunchTarget,
+  LevelId,
+  LevelOutcome,
+} from '../../game-engine/types';
 import {
   CharacterIdSchema,
   CosmeticIdSchema,
+  LaunchTargetSchema,
   LevelIdSchema,
   ProgressionStateSchema,
 } from '../../multiplayer/protocol';
@@ -93,6 +100,7 @@ export interface ActiveRoomSessionBackup {
   character: CharacterId;
   cosmetic: z.infer<typeof CosmeticIdSchema>;
   selectedLevelId: LevelId;
+  selectedTarget?: LaunchTarget;
   activeScreen: 'lobby' | 'world-select' | 'playing' | 'result';
   stateVersion: number;
   hostEngineState: GameEngineState | null;
@@ -108,6 +116,7 @@ const RoomSessionMetaSchema = z.object({
   character: CharacterIdSchema,
   cosmetic: CosmeticIdSchema,
   selectedLevelId: LevelIdSchema,
+  selectedTarget: LaunchTargetSchema.optional(),
   activeScreen: z.enum(['lobby', 'world-select', 'playing', 'result']),
   stateVersion: z.number().int().min(0),
   savedAt: z.number(),

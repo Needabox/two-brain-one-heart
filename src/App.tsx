@@ -1,6 +1,7 @@
 import { MotionConfig, motion } from 'framer-motion';
 import { AssetImage } from './components/AssetImage';
 import { useMultiplayerRoom } from './features/room/useMultiplayerRoom';
+import { ArcadeSelectScreen } from './screens/ArcadeSelectScreen';
 import { CreateRoomScreen } from './screens/CreateRoomScreen';
 import { JoinRoomScreen } from './screens/JoinRoomScreen';
 import { LandingScreen } from './screens/LandingScreen';
@@ -31,6 +32,7 @@ export function App() {
               room.setScreen('join-room');
             }}
             onOpenWorldPreview={() => room.setScreen('world-select')}
+            onOpenArcadePreview={() => room.setScreen('arcade-select')}
             onOpenSettings={() => room.openSettings('landing')}
           />
         );
@@ -100,6 +102,7 @@ export function App() {
               onGoCreate={() => room.setScreen('create-room')}
               onGoJoin={() => room.setScreen('join-room')}
               onOpenWorldPreview={() => room.setScreen('world-select')}
+              onOpenArcadePreview={() => room.setScreen('arcade-select')}
               onOpenSettings={() => room.openSettings('landing')}
             />
           );
@@ -112,6 +115,7 @@ export function App() {
             remotePlayer={room.remotePlayer}
             ready={room.ready}
             selectedLevelId={room.selectedLevelId}
+            selectedTarget={room.selectedTarget}
             progression={room.progression}
             transportStatus={room.transportStatus}
             transportDetail={room.transportDetail}
@@ -122,6 +126,7 @@ export function App() {
             onSelectCharacter={room.selectCharacter}
             onSelectCosmetic={room.selectCosmetic}
             onOpenWorldSelect={() => room.setScreen('world-select')}
+            onOpenArcadeSelect={() => room.setScreen('arcade-select')}
             onStartLevel={() => room.startLevel()}
             onOpenSettings={() => room.openSettings('lobby')}
             onLeaveRoom={() => void room.leaveRoom()}
@@ -140,10 +145,23 @@ export function App() {
           />
         );
 
+      case 'arcade-select':
+        return (
+          <ArcadeSelectScreen
+            progression={room.progression}
+            selectedTarget={room.selectedTarget}
+            inRoom={Boolean(room.roomCode)}
+            isHost={room.role === 'host'}
+            onSelectArcadeGame={room.selectArcadeGame}
+            onBack={() => room.setScreen(room.roomCode ? 'lobby' : 'landing')}
+          />
+        );
+
       case 'minigame':
         return (
           <MiniGameScreen
             levelId={room.selectedLevelId}
+            target={room.selectedTarget}
             role={room.role ?? 'host'}
             playerAView={room.playerAView}
             snapshot={room.snapshot}
@@ -173,6 +191,7 @@ export function App() {
             partnerCosmetic={room.remotePlayer?.cosmetic ?? 'none'}
             onNextLevel={(nextId) => room.startLevel(nextId)}
             onReplay={room.restartCurrentLevel}
+            onOpenArcade={() => room.setScreen('arcade-select')}
             onBackToLobby={room.returnToLobbyFromGame}
           />
         );

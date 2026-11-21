@@ -12,6 +12,7 @@ interface LandingScreenProps {
   onGoCreate: () => void;
   onGoJoin: () => void;
   onOpenWorldPreview: () => void;
+  onOpenArcadePreview: () => void;
   onOpenSettings: () => void;
 }
 
@@ -22,6 +23,7 @@ export function LandingScreen({
   onGoCreate,
   onGoJoin,
   onOpenWorldPreview,
+  onOpenArcadePreview,
   onOpenSettings,
 }: LandingScreenProps) {
   const totalStars = getTotalStars(progression.levelStars);
@@ -83,13 +85,22 @@ export function LandingScreen({
               {totalStars} / 15 Stars
             </span>
             <span>Duo Lv. {duoLevel} ({progression.xp} XP)</span>
-            <button
-              type="button"
-              onClick={onOpenWorldPreview}
-              className="min-h-[44px] rounded-full px-2.5 underline decoration-[#9B8CFF] decoration-2 underline-offset-2 hover:text-[#6D5880]"
-            >
-              World 1 Levels
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onOpenWorldPreview}
+                className="min-h-[44px] rounded-full px-2.5 underline decoration-[#9B8CFF] decoration-2 underline-offset-2 hover:text-[#6D5880]"
+              >
+                Campaign (5)
+              </button>
+              <button
+                type="button"
+                onClick={onOpenArcadePreview}
+                className="min-h-[44px] rounded-full px-2.5 underline decoration-[#FF6B93] decoration-2 underline-offset-2 hover:text-[#6D5880]"
+              >
+                Arcade (8)
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">

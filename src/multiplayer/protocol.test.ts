@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildSanitizedSnapshot, createEngineState } from '../game-engine/engines';
+import {
+  buildArcadeSnapshot,
+  createArcadeEngineState,
+} from '../game-engine/arcadeEngines';
 import { INITIAL_PROGRESSION_STATE } from '../game-engine/scoring';
+import type { ArcadeGameId, LaunchTarget } from '../game-engine/types';
 import {
   buildEnvelope,
   EventDeduplicator,
@@ -94,5 +99,88 @@ describe('Multiplayer Protocol & Deduplication', () => {
     expect(dedup.hasSeenOrMark('e3')).toBe(false);
     expect(dedup.hasSeenOrMark('e4')).toBe(false); // Evicts e1
     expect(dedup.hasSeenOrMark('e1')).toBe(false);
+  });
+
+  it('validates all 8 Arcade snapshots, action envelopes, and Arcade outcomes', () => {
+    const arcadeIds: ArcadeGameId[] = [
+      'rhythm-duo',
+      'power-connection',
+      'dont-press-together',
+      'potion-lab',
+      'mirror-moves',
+      'draw-my-mind',
+      'bridge-builder',
+      'balloon-rescue',
+    ];
+
+    arcadeIds.forEach((gameId, idx) => {
+      const target: LaunchTarget = { mode: 'arcade', gameId, difficulty: 'medium' };
+      const engine = createArcadeEngineState(gameId, 'medium', 1000);
+      const snap = buildArcadeSnapshot(1, target, engine, idx + 1);
+      const env = buildEnvelope('ARC123', 'host-1', idx + 1, 'GAME_START', {
+        levelId: 1,
+        target,
+        snapshot: snap,
+      });
+      const parsed = parseMultiplayerEnvelope(env);
+      expect(parsed?.type).toBe('GAME_START');
+    });
+
+    const arcadeActions = [
+      buildEnvelope('ARC123', 'p2', 20, 'GAME_ACTION', {
+        levelId: 1,
+        action: { kind: 'rhythm-duo', type: 'TAP_BEAT', beatIndex: 0, deltaMs: 20 },
+      }),
+      buildEnvelope('ARC123', 'p2', 21, 'GAME_ACTION', {
+        levelId: 1,
+        action: { kind: 'power-connection', type: 'ROTATE_TILE', x: 1, y: 1 },
+      }),
+      buildEnvelope('ARC123', 'p2', 22, 'GAME_ACTION', {
+        levelId: 1,
+        action: { kind: 'dont-press-together', type: 'PRESS_LOGIC_BUTTON', buttonId: 'g1' },
+      }),
+      buildEnvelope('ARC123', 'p2', 23, 'GAME_ACTION', {
+        levelId: 1,
+        action: { kind: 'potion-lab', type: 'ADD_INGREDIENT', ingredientId: 'moon-dew' },
+      }),
+      buildEnvelope('ARC123', 'p2', 24, 'GAME_ACTION', {
+        levelId: 1,
+        action: { kind: 'mirror-moves', type: 'MOVE_MIRROR_CHAR', direction: 'right' },
+      }),
+      buildEnvelope('ARC123', 'p1', 25, 'GAME_ACTION', {
+        levelId: 1,
+        action: {
+          kind: 'draw-my-mind',
+          type: 'ADD_DRAW_STROKE',
+          stroke: { id: 's1', color: '#fb7185', size: 6, points: [{ x: 10, y: 20 }] },
+        },
+      }),
+      buildEnvelope('ARC123', 'p2', 26, 'GAME_ACTION', {
+        levelId: 1,
+        action: { kind: 'bridge-builder', type: 'PLACE_BRIDGE_PIECE', x: 1, y: 1, pieceKind: 'deck' },
+      }),
+      buildEnvelope('ARC123', 'p2', 27, 'GAME_ACTION', {
+        levelId: 1,
+        action: { kind: 'balloon-rescue', type: 'SET_BALLOON_LIFT', lift: 1 },
+      }),
+      buildEnvelope('ARC123', 'p1', 28, 'LEVEL_COMPLETE', {
+        outcome: {
+          completionId: 'arc-complete-1',
+          levelId: 1,
+          arcade: { gameId: 'draw-my-mind', difficulty: 'hard', score: 1350 },
+          stars: 3,
+          xpAwarded: 250,
+          elapsedMs: 42_000,
+          mistakes: 0,
+          hintsUsed: 0,
+          unlockedNextLevel: null,
+        },
+        progression: INITIAL_PROGRESSION_STATE,
+      }),
+    ];
+
+    for (const env of arcadeActions) {
+      expect(parseMultiplayerEnvelope(env)).not.toBeNull();
+    }
   });
 });

@@ -5,9 +5,18 @@ import {
   createEngineState,
   extractPlayerAView,
 } from '../../game-engine/engines';
+import {
+  applyArcadeEngineAction,
+  buildArcadeSnapshot,
+  createArcadeEngineState,
+  extractArcadePlayerAView,
+  isArcadeEngineState,
+} from '../../game-engine/arcadeEngines';
+import { getArcadeGameEntry } from '../../game-engine/registry';
 import { getLevelMeta } from '../../game-engine/puzzles';
 import {
   applyLevelCompletion,
+  calculateArcadeScore,
   calculateStars,
   calculateXpAward,
   getNextUnlockLevel,
@@ -16,10 +25,13 @@ import {
   type ProgressionState,
 } from '../../game-engine/scoring';
 import type {
+  ArcadeGameId,
   CharacterId,
   CosmeticId,
+  DifficultyLevel,
   GameActionInput,
   GameEngineState,
+  LaunchTarget,
   LevelId,
   LevelOutcome,
   PlayerAView,
@@ -59,6 +71,7 @@ export type ScreenId =
   | 'join-room'
   | 'lobby'
   | 'world-select'
+  | 'arcade-select'
   | 'minigame'
   | 'result'
   | 'settings';
@@ -74,6 +87,10 @@ export function useMultiplayerRoom() {
   const [peerId, setPeerId] = useState<string>(() => createPeerId());
   const [ready, setReady] = useState(false);
   const [selectedLevelId, setSelectedLevelId] = useState<LevelId>(1);
+  const [selectedTarget, setSelectedTarget] = useState<LaunchTarget>({
+    mode: 'campaign',
+    levelId: 1,
+  });
   const [remotePlayer, setRemotePlayer] = useState<PlayerProfilePayload | null>(null);
 
   const [transportStatus, setTransportStatus] = useState<TransportStatus>('idle');
@@ -100,6 +117,7 @@ export function useMultiplayerRoom() {
   const progressionRef = useRef<ProgressionState>(progression);
   const readyRef = useRef<boolean>(ready);
   const selectedLevelRef = useRef<LevelId>(selectedLevelId);
+  const selectedTargetRef = useRef<LaunchTarget>(selectedTarget);
   const screenRef = useRef<ScreenId>(screen);
   const hostEngineRef = useRef<GameEngineState | null>(null);
   const stateVersionRef = useRef<number>(0);
@@ -123,6 +141,10 @@ export function useMultiplayerRoom() {
   useEffect(() => {
     selectedLevelRef.current = selectedLevelId;
   }, [selectedLevelId]);
+
+  useEffect(() => {
+    selectedTargetRef.current = selectedTarget;
+  }, [selectedTarget]);
 
   useEffect(() => {
     screenRef.current = screen;
@@ -172,6 +194,7 @@ export function useMultiplayerRoom() {
         character: settingsRef.current.preferredCharacter,
         cosmetic: progressionRef.current.selectedCosmetic,
         selectedLevelId: selectedLevelRef.current,
+        selectedTarget: selectedTargetRef.current,
         activeScreen: backupScreen,
         stateVersion: stateVersionRef.current,
         hostEngineState: roleRef.current === 'host' ? hostEngineRef.current : null,
@@ -205,10 +228,98 @@ export function useMultiplayerRoom() {
   }, []);
 
   const handleHostGameAction = useCallback(
-    (levelId: LevelId, action: GameActionInput) => {
+    (levelId: LevelId, action: GameActionInput, actorRole: 'host' | 'guest') => {
       const currentEngine = hostEngineRef.current;
       if (!currentEngine || roleRef.current !== 'host') return;
-      if (selectedLevelRef.current !== levelId) return;
+      const target = selectedTargetRef.current;
+
+      if (target.mode === 'arcade') {
+        if (!isArcadeEngineState(currentEngine) || currentEngine.kind !== target.gameId) {
+          return;
+        }
+        const { nextState, completedNow } = applyArcadeEngineAction(
+          currentEngine,
+          action,
+          actorRole,
+        );
+        hostEngineRef.current = nextState;
+        stateVersionRef.current += 1;
+
+        const nextAView = extractArcadePlayerAView(nextState);
+        const nextSnapshot = buildArcadeSnapshot(
+          selectedLevelRef.current,
+          target,
+          nextState,
+          stateVersionRef.current,
+        );
+        setPlayerAView(nextAView);
+        setSnapshot(nextSnapshot);
+        transportRef.current?.send('GAME_STATE_SNAPSHOT', nextSnapshot);
+
+        if (nextState.mistakes > currentEngine.mistakes) {
+          playCozySound('error', settingsRef.current.soundEnabled);
+        } else if (nextState.hintsUsed > currentEngine.hintsUsed) {
+          playCozySound('hint', settingsRef.current.soundEnabled);
+        }
+
+        if (completedNow) {
+          const entry = getArcadeGameEntry(target.gameId);
+          const diffThresholds = entry.thresholds[target.difficulty];
+          const elapsedMs = Math.max(1000, Date.now() - nextState.startedAt);
+          const stars = calculateStars(
+            diffThresholds,
+            nextState.mistakes,
+            elapsedMs,
+            nextState.hintsUsed,
+          );
+          const prevStars =
+            progressionRef.current.arcadeRecords[target.gameId]?.bestStars ?? 0;
+          const xpAwarded = calculateXpAward(
+            { baseXp: entry.baseXp[target.difficulty] },
+            prevStars,
+            stars,
+          );
+          const score = calculateArcadeScore(
+            stars,
+            nextState.mistakes,
+            elapsedMs,
+            nextState.hintsUsed,
+            target.difficulty,
+          );
+
+          const outcome: LevelOutcome = {
+            completionId: createEventId(),
+            levelId: selectedLevelRef.current,
+            arcade: {
+              gameId: target.gameId,
+              difficulty: target.difficulty,
+              score,
+            },
+            stars,
+            xpAwarded,
+            elapsedMs,
+            mistakes: nextState.mistakes,
+            hintsUsed: nextState.hintsUsed,
+            unlockedNextLevel: null,
+          };
+
+          const { nextState: updatedProg } = applyLevelCompletion(progressionRef.current, outcome);
+          progressionRef.current = updatedProg;
+          setProgression(updatedProg);
+          setLastOutcome(outcome);
+          lastOutcomeRef.current = outcome;
+          setScreen('result');
+          playCozySound('win', settingsRef.current.soundEnabled);
+
+          transportRef.current?.send('LEVEL_COMPLETE', {
+            outcome,
+            progression: updatedProg,
+          });
+        }
+        return;
+      }
+
+      if (selectedLevelRef.current !== levelId || isArcadeEngineState(currentEngine)) return;
 
       const { nextState, completedNow } = applyGameAction(levelId, currentEngine, action, Date.now());
       hostEngineRef.current = nextState;
@@ -283,15 +394,23 @@ export function useMultiplayerRoom() {
           if (envelope.type === 'ROOM_JOIN' && roleRef.current === 'host') {
             if (hostEngineRef.current && (screenRef.current === 'minigame' || screenRef.current === 'result')) {
               stateVersionRef.current += 1;
-              const activeSnapshot = buildSanitizedSnapshot(
-                selectedLevelRef.current,
-                hostEngineRef.current,
-                stateVersionRef.current,
-              );
+              const activeSnapshot = isArcadeEngineState(hostEngineRef.current)
+                ? buildArcadeSnapshot(
+                    selectedLevelRef.current,
+                    selectedTargetRef.current,
+                    hostEngineRef.current,
+                    stateVersionRef.current,
+                  )
+                : buildSanitizedSnapshot(
+                    selectedLevelRef.current,
+                    hostEngineRef.current,
+                    stateVersionRef.current,
+                  );
               setSnapshot(activeSnapshot);
               transportRef.current?.send('RECONNECT_ACCEPTED', {
                 hostPlayer: buildLocalProfile(),
                 selectedLevelId: selectedLevelRef.current,
+                selectedTarget: selectedTargetRef.current,
                 reconciledProgression: merged,
                 activeSnapshot,
                 lastOutcome: lastOutcomeRef.current,
@@ -321,9 +440,13 @@ export function useMultiplayerRoom() {
 
         case 'GAME_START': {
           if (roleRef.current === 'guest') {
-            const { levelId, snapshot: incomingSnap } = envelope.payload;
+            const { levelId, target, snapshot: incomingSnap } = envelope.payload;
+            const resolvedTarget: LaunchTarget =
+              target ?? incomingSnap.summary.target ?? { mode: 'campaign', levelId };
             selectedLevelRef.current = levelId;
             setSelectedLevelId(levelId);
+            selectedTargetRef.current = resolvedTarget;
+            setSelectedTarget(resolvedTarget);
             stateVersionRef.current = incomingSnap.summary.stateVersion;
             setSnapshot(incomingSnap);
             setLastOutcome(null);
@@ -336,7 +459,7 @@ export function useMultiplayerRoom() {
 
         case 'GAME_ACTION': {
           if (roleRef.current === 'host') {
-            handleHostGameAction(envelope.payload.levelId, envelope.payload.action);
+            handleHostGameAction(envelope.payload.levelId, envelope.payload.action, 'guest');
           }
           break;
         }
@@ -379,9 +502,13 @@ export function useMultiplayerRoom() {
 
         case 'LEVEL_RESTART': {
           if (roleRef.current === 'guest') {
-            const { levelId, snapshot: nextSnap } = envelope.payload;
+            const { levelId, target, snapshot: nextSnap } = envelope.payload;
+            const resolvedTarget: LaunchTarget =
+              target ?? nextSnap.summary.target ?? { mode: 'campaign', levelId };
             selectedLevelRef.current = levelId;
             setSelectedLevelId(levelId);
+            selectedTargetRef.current = resolvedTarget;
+            setSelectedTarget(resolvedTarget);
             stateVersionRef.current = nextSnap.summary.stateVersion;
             setSnapshot(nextSnap);
             setLastOutcome(null);
@@ -404,17 +531,25 @@ export function useMultiplayerRoom() {
             let activeSnapshot: SanitizedSnapshotPayload | null = null;
             if (hostEngineRef.current && screenRef.current === 'minigame') {
               stateVersionRef.current += 1;
-              activeSnapshot = buildSanitizedSnapshot(
-                selectedLevelRef.current,
-                hostEngineRef.current,
-                stateVersionRef.current,
-              );
+              activeSnapshot = isArcadeEngineState(hostEngineRef.current)
+                ? buildArcadeSnapshot(
+                    selectedLevelRef.current,
+                    selectedTargetRef.current,
+                    hostEngineRef.current,
+                    stateVersionRef.current,
+                  )
+                : buildSanitizedSnapshot(
+                    selectedLevelRef.current,
+                    hostEngineRef.current,
+                    stateVersionRef.current,
+                  );
               setSnapshot(activeSnapshot);
             }
 
             transportRef.current?.send('RECONNECT_ACCEPTED', {
               hostPlayer: buildLocalProfile(),
               selectedLevelId: selectedLevelRef.current,
+              selectedTarget: selectedTargetRef.current,
               reconciledProgression: merged,
               activeSnapshot,
               lastOutcome: screenRef.current === 'result' ? lastOutcomeRef.current : null,
@@ -429,6 +564,7 @@ export function useMultiplayerRoom() {
             const {
               hostPlayer,
               selectedLevelId: hostLevelId,
+              selectedTarget: hostTarget,
               reconciledProgression,
               activeSnapshot,
               lastOutcome: hostOutcome,
@@ -442,6 +578,10 @@ export function useMultiplayerRoom() {
             setProgression(merged);
             selectedLevelRef.current = hostLevelId;
             setSelectedLevelId(hostLevelId);
+            const resolvedTarget: LaunchTarget =
+              hostTarget ?? activeSnapshot?.summary.target ?? { mode: 'campaign', levelId: hostLevelId };
+            selectedTargetRef.current = resolvedTarget;
+            setSelectedTarget(resolvedTarget);
 
             if (activeSnapshot) {
               stateVersionRef.current = activeSnapshot.summary.stateVersion;
@@ -471,6 +611,7 @@ export function useMultiplayerRoom() {
       options?: {
         isRecovery?: boolean;
         restoredLevelId?: LevelId;
+        restoredTarget?: LaunchTarget;
         restoredEngine?: GameEngineState | null;
         restoredOutcome?: LevelOutcome | null;
         restoredStateVersion?: number;
@@ -499,24 +640,45 @@ export function useMultiplayerRoom() {
         selectedLevelRef.current = options.restoredLevelId;
         setSelectedLevelId(options.restoredLevelId);
       }
+      if (options?.restoredTarget) {
+        selectedTargetRef.current = options.restoredTarget;
+        setSelectedTarget(options.restoredTarget);
+      }
       if (options?.restoredStateVersion !== undefined) {
         stateVersionRef.current = options.restoredStateVersion;
       }
       if (options?.restoredEngine && nextRole === 'host') {
         hostEngineRef.current = options.restoredEngine;
-        setPlayerAView(
-          extractPlayerAView(
-            options.restoredLevelId ?? selectedLevelRef.current,
-            options.restoredEngine,
-          ),
-        );
-        setSnapshot(
-          buildSanitizedSnapshot(
-            options.restoredLevelId ?? selectedLevelRef.current,
-            options.restoredEngine,
-            stateVersionRef.current,
-          ),
-        );
+        if (isArcadeEngineState(options.restoredEngine)) {
+          const fallbackTarget: LaunchTarget = options.restoredTarget ?? {
+            mode: 'arcade',
+            gameId: options.restoredEngine.kind,
+            difficulty: options.restoredEngine.difficulty,
+          };
+          setPlayerAView(extractArcadePlayerAView(options.restoredEngine));
+          setSnapshot(
+            buildArcadeSnapshot(
+              options.restoredLevelId ?? selectedLevelRef.current,
+              fallbackTarget,
+              options.restoredEngine,
+              stateVersionRef.current,
+            ),
+          );
+        } else {
+          setPlayerAView(
+            extractPlayerAView(
+              options.restoredLevelId ?? selectedLevelRef.current,
+              options.restoredEngine,
+            ),
+          );
+          setSnapshot(
+            buildSanitizedSnapshot(
+              options.restoredLevelId ?? selectedLevelRef.current,
+              options.restoredEngine,
+              stateVersionRef.current,
+            ),
+          );
+        }
       }
       if (options?.restoredOutcome) {
         setLastOutcome(options.restoredOutcome);
@@ -615,6 +777,7 @@ export function useMultiplayerRoom() {
     void attachTransport(backup.roomCode, backup.role, backup.peerId, {
       isRecovery: true,
       restoredLevelId: backup.selectedLevelId,
+      restoredTarget: backup.selectedTarget,
       restoredEngine: backup.hostEngineState,
       restoredOutcome: backup.lastOutcome,
       restoredStateVersion: backup.stateVersion,
@@ -772,77 +935,148 @@ export function useMultiplayerRoom() {
     if (levelId > progressionRef.current.unlockedLevelId) return;
     selectedLevelRef.current = levelId;
     setSelectedLevelId(levelId);
+    const nextTarget: LaunchTarget = { mode: 'campaign', levelId };
+    selectedTargetRef.current = nextTarget;
+    setSelectedTarget(nextTarget);
     playCozySound('tap', settingsRef.current.soundEnabled);
   }, []);
 
-  const startLevel = useCallback((levelIdOverride?: LevelId) => {
-    if (roleRef.current !== 'host') return;
-    const targetLevel = levelIdOverride ?? selectedLevelRef.current;
-    if (targetLevel > progressionRef.current.unlockedLevelId) return;
-    if (!readyRef.current || !remotePlayer?.ready || !remotePlayer?.connected) {
-      setRoomError('Both players must be connected and Ready to start!');
-      return;
-    }
+  const selectArcadeGame = useCallback(
+    (gameId: ArcadeGameId, difficulty: DifficultyLevel) => {
+      const nextTarget: LaunchTarget = { mode: 'arcade', gameId, difficulty };
+      selectedTargetRef.current = nextTarget;
+      setSelectedTarget(nextTarget);
+      playCozySound('tap', settingsRef.current.soundEnabled);
+    },
+    [],
+  );
 
-    selectedLevelRef.current = targetLevel;
-    setSelectedLevelId(targetLevel);
-    setRoomError(null);
-    setNoticeBanner(null);
+  const launchTarget = useCallback(
+    (target: LaunchTarget, isRestart: boolean) => {
+      if (roleRef.current !== 'host') return;
+      if (target.mode === 'campaign') {
+        if (target.levelId > progressionRef.current.unlockedLevelId) return;
+        selectedLevelRef.current = target.levelId;
+        setSelectedLevelId(target.levelId);
+      }
 
-    const engine = createEngineState(targetLevel, Date.now());
-    hostEngineRef.current = engine;
-    stateVersionRef.current += 1;
+      selectedTargetRef.current = target;
+      setSelectedTarget(target);
+      setRoomError(null);
+      setNoticeBanner(null);
 
-    const aView = extractPlayerAView(targetLevel, engine);
-    const snap = buildSanitizedSnapshot(targetLevel, engine, stateVersionRef.current);
+      const now = Date.now();
+      stateVersionRef.current += 1;
 
-    setPlayerAView(aView);
-    setSnapshot(snap);
-    setLastOutcome(null);
-    setScreen('minigame');
-    playCozySound('success', settingsRef.current.soundEnabled);
+      if (target.mode === 'arcade') {
+        const engine = createArcadeEngineState(target.gameId, target.difficulty, now);
+        hostEngineRef.current = engine;
+        const aView = extractArcadePlayerAView(engine);
+        const snap = buildArcadeSnapshot(
+          selectedLevelRef.current,
+          target,
+          engine,
+          stateVersionRef.current,
+        );
+        setPlayerAView(aView);
+        setSnapshot(snap);
+        setLastOutcome(null);
+        setScreen('minigame');
+        playCozySound(isRestart ? 'tap' : 'success', settingsRef.current.soundEnabled);
 
-    transportRef.current?.send('GAME_START', {
-      levelId: targetLevel,
-      snapshot: snap,
-    });
-  }, [remotePlayer]);
+        transportRef.current?.send(isRestart ? 'LEVEL_RESTART' : 'GAME_START', {
+          levelId: selectedLevelRef.current,
+          target,
+          snapshot: snap,
+        });
+        return;
+      }
+
+      const engine = createEngineState(target.levelId, now);
+      hostEngineRef.current = engine;
+      const aView = extractPlayerAView(target.levelId, engine);
+      const snap = buildSanitizedSnapshot(target.levelId, engine, stateVersionRef.current);
+
+      setPlayerAView(aView);
+      setSnapshot(snap);
+      setLastOutcome(null);
+      setScreen('minigame');
+      playCozySound(isRestart ? 'tap' : 'success', settingsRef.current.soundEnabled);
+
+      transportRef.current?.send(isRestart ? 'LEVEL_RESTART' : 'GAME_START', {
+        levelId: target.levelId,
+        target,
+        snapshot: snap,
+      });
+    },
+    [],
+  );
+
+  const startLevel = useCallback(
+    (levelIdOverride?: LevelId) => {
+      if (roleRef.current !== 'host') return;
+      if (!readyRef.current || !remotePlayer?.ready || !remotePlayer?.connected) {
+        setRoomError('Both players must be connected and Ready to start!');
+        return;
+      }
+      const target: LaunchTarget =
+        levelIdOverride !== undefined
+          ? { mode: 'campaign', levelId: levelIdOverride }
+          : selectedTargetRef.current;
+      launchTarget(target, false);
+    },
+    [launchTarget, remotePlayer],
+  );
 
   const restartCurrentLevel = useCallback(() => {
-    if (roleRef.current !== 'host') return;
-    const levelId = selectedLevelRef.current;
-    const engine = createEngineState(levelId, Date.now());
-    hostEngineRef.current = engine;
-    stateVersionRef.current += 1;
-
-    const aView = extractPlayerAView(levelId, engine);
-    const snap = buildSanitizedSnapshot(levelId, engine, stateVersionRef.current);
-
-    setPlayerAView(aView);
-    setSnapshot(snap);
-    setLastOutcome(null);
-    setScreen('minigame');
-    playCozySound('tap', settingsRef.current.soundEnabled);
-
-    transportRef.current?.send('LEVEL_RESTART', {
-      levelId,
-      snapshot: snap,
-    });
-  }, []);
+    launchTarget(selectedTargetRef.current, true);
+  }, [launchTarget]);
 
   const sendGameAction = useCallback(
     (action: GameActionInput) => {
       if (roleRef.current === 'host') {
-        handleHostGameAction(selectedLevelRef.current, action);
+        handleHostGameAction(selectedLevelRef.current, action, 'host');
       } else if (roleRef.current === 'guest') {
         transportRef.current?.send('GAME_ACTION', {
           levelId: selectedLevelRef.current,
+          target: selectedTargetRef.current,
           action,
         });
       }
     },
     [handleHostGameAction],
   );
+
+  // Host-only fixed-step simulation ticker for real-time Arcade games (Balloon Rescue & Draw My Mind timer)
+  useEffect(() => {
+    if (role !== 'host' || screen !== 'minigame' || selectedTarget.mode !== 'arcade') {
+      return;
+    }
+
+    if (selectedTarget.gameId === 'balloon-rescue') {
+      const interval = setInterval(() => {
+        handleHostGameAction(
+          selectedLevelRef.current,
+          { kind: 'balloon-rescue', type: 'TICK_BALLOON' },
+          'host',
+        );
+      }, 180);
+      return () => clearInterval(interval);
+    }
+
+    if (selectedTarget.gameId === 'draw-my-mind') {
+      const interval = setInterval(() => {
+        handleHostGameAction(
+          selectedLevelRef.current,
+          { kind: 'draw-my-mind', type: 'TICK_DRAW_TIMER' },
+          'host',
+        );
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+
+    return undefined;
+  }, [role, screen, selectedTarget, handleHostGameAction]);
 
   const returnToLobbyFromGame = useCallback(() => {
     hostEngineRef.current = null;
@@ -896,6 +1130,7 @@ export function useMultiplayerRoom() {
     peerId,
     ready,
     selectedLevelId,
+    selectedTarget,
     remotePlayer,
     transportStatus,
     transportDetail,
@@ -918,6 +1153,7 @@ export function useMultiplayerRoom() {
     selectCharacter,
     selectCosmetic,
     selectLevel,
+    selectArcadeGame,
     startLevel,
     restartCurrentLevel,
     sendGameAction,

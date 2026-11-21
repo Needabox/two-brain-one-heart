@@ -16,13 +16,19 @@ import { ConnectionPill } from '../components/ConnectionPill';
 import { CuteButton } from '../components/CuteButton';
 import { PastelCard } from '../components/PastelCard';
 import { getLevelMeta } from '../game-engine/puzzles';
+import { getArcadeGameEntry } from '../game-engine/registry';
 import {
   COSMETIC_CATALOG,
   getTotalStars,
   isCosmeticUnlocked,
   type ProgressionState,
 } from '../game-engine/scoring';
-import type { CharacterId, CosmeticId, LevelId } from '../game-engine/types';
+import type {
+  CharacterId,
+  CosmeticId,
+  LaunchTarget,
+  LevelId,
+} from '../game-engine/types';
 import type { PlayerProfilePayload } from '../multiplayer/protocol';
 import type { SignalingModeInfo } from '../multiplayer/signaling/SignalingProvider';
 import type { TransportStatus } from '../multiplayer/webrtc/WebRTCTransport';
@@ -34,6 +40,7 @@ interface LobbyScreenProps {
   remotePlayer: PlayerProfilePayload | null;
   ready: boolean;
   selectedLevelId: LevelId;
+  selectedTarget: LaunchTarget;
   progression: ProgressionState;
   transportStatus: TransportStatus;
   transportDetail: string | null;
@@ -44,6 +51,7 @@ interface LobbyScreenProps {
   onSelectCharacter: (c: CharacterId) => void;
   onSelectCosmetic: (c: CosmeticId) => void;
   onOpenWorldSelect: () => void;
+  onOpenArcadeSelect: () => void;
   onStartLevel: () => void;
   onOpenSettings: () => void;
   onLeaveRoom: () => void;
@@ -56,6 +64,7 @@ export function LobbyScreen({
   remotePlayer,
   ready,
   selectedLevelId,
+  selectedTarget,
   progression,
   transportStatus,
   transportDetail,
@@ -66,12 +75,21 @@ export function LobbyScreen({
   onSelectCharacter,
   onSelectCosmetic,
   onOpenWorldSelect,
+  onOpenArcadeSelect,
   onStartLevel,
   onOpenSettings,
   onLeaveRoom,
 }: LobbyScreenProps) {
   const [copied, setCopied] = useState(false);
   const levelMeta = getLevelMeta(selectedLevelId);
+  const arcadeMeta =
+    selectedTarget.mode === 'arcade'
+      ? getArcadeGameEntry(selectedTarget.gameId)
+      : null;
+  const arcadeRecord =
+    selectedTarget.mode === 'arcade'
+      ? progression.arcadeRecords?.[selectedTarget.gameId]
+      : undefined;
   const totalStars = getTotalStars(progression.levelStars);
 
   const canStart =
@@ -302,33 +320,56 @@ export function LobbyScreen({
         </PastelCard>
       </div>
 
-      {/* Selected Level + Launch Controls */}
+      {/* Selected Mode / Level + Launch Controls */}
       <PastelCard tone="lavender" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <AssetImage
-              src={levelMeta.iconAsset}
-              alt={levelMeta.name}
+              src={arcadeMeta ? arcadeMeta.iconAsset : levelMeta.iconAsset}
+              alt={arcadeMeta ? arcadeMeta.name : levelMeta.name}
               className="h-14 w-14 shrink-0 rounded-2xl border-2 border-[#4A355A]/15 bg-[#FFFDF9] p-1 object-contain"
             />
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-wider text-[#6D5880]">
-                World 1: The Cozy Room • Level {levelMeta.id}
-              </p>
-              <h2 className="font-display text-xl font-bold text-[#4A355A]">
-                {levelMeta.name}
-              </h2>
-              <p className="text-xs font-semibold text-[#6D5880]">
-                {levelMeta.difficulty} • Best: {progression.levelStars[levelMeta.id]} / 3{' '}
-                <Star className="inline h-3.5 w-3.5 fill-[#FFC94D] text-[#4A355A]" />
-              </p>
+              {arcadeMeta && selectedTarget.mode === 'arcade' ? (
+                <>
+                  <p className="text-xs font-extrabold uppercase tracking-wider text-[#FF6B93]">
+                    Arcade Mode • {arcadeMeta.category}
+                  </p>
+                  <h2 className="font-display text-xl font-bold text-[#4A355A]">
+                    {arcadeMeta.name}
+                  </h2>
+                  <p className="text-xs font-semibold text-[#6D5880]">
+                    Difficulty: {selectedTarget.difficulty.toUpperCase()} • Best:{' '}
+                    {arcadeRecord?.bestStars ?? 0} / 3{' '}
+                    <Star className="inline h-3.5 w-3.5 fill-[#FFC94D] text-[#4A355A]" />
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-extrabold uppercase tracking-wider text-[#6D5880]">
+                    World 1: The Cozy Room • Level {levelMeta.id}
+                  </p>
+                  <h2 className="font-display text-xl font-bold text-[#4A355A]">
+                    {levelMeta.name}
+                  </h2>
+                  <p className="text-xs font-semibold text-[#6D5880]">
+                    {levelMeta.difficulty} • Best: {progression.levelStars[levelMeta.id]} / 3{' '}
+                    <Star className="inline h-3.5 w-3.5 fill-[#FFC94D] text-[#4A355A]" />
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
-          <CuteButton variant="cream" size="sm" onClick={onOpenWorldSelect}>
-            <Map className="h-4 w-4" aria-hidden="true" />
-            All 5 Levels
-          </CuteButton>
+          <div className="flex flex-wrap gap-2">
+            <CuteButton variant="cream" size="sm" onClick={onOpenWorldSelect}>
+              <Map className="h-4 w-4" aria-hidden="true" />
+              Campaign (5)
+            </CuteButton>
+            <CuteButton variant="sky" size="sm" onClick={onOpenArcadeSelect}>
+              Arcade (8)
+            </CuteButton>
+          </div>
         </div>
 
         {role === 'host' ? (
@@ -341,7 +382,9 @@ export function LobbyScreen({
               onClick={onStartLevel}
             >
               <Play className="h-5 w-5 fill-current" aria-hidden="true" />
-              Start Level {levelMeta.id}: {levelMeta.name}
+              {arcadeMeta
+                ? `Start Arcade: ${arcadeMeta.name}`
+                : `Start Level ${levelMeta.id}: ${levelMeta.name}`}
             </CuteButton>
             {!canStart && (
               <p className="text-center text-xs font-bold text-[#6D5880]">

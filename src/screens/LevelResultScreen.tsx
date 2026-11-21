@@ -4,6 +4,7 @@ import { CharacterAvatar } from '../components/CharacterAvatar';
 import { CuteButton } from '../components/CuteButton';
 import { PastelCard } from '../components/PastelCard';
 import { getLevelMeta } from '../game-engine/puzzles';
+import { getArcadeGameEntry } from '../game-engine/registry';
 import { getPlayerLevelFromXp, type ProgressionState } from '../game-engine/scoring';
 import type { CharacterId, CosmeticId, LevelId, LevelOutcome } from '../game-engine/types';
 
@@ -17,6 +18,7 @@ interface LevelResultScreenProps {
   partnerCosmetic: CosmeticId;
   onNextLevel: (nextId: LevelId) => void;
   onReplay: () => void;
+  onOpenArcade?: () => void;
   onBackToLobby: () => void;
 }
 
@@ -37,11 +39,16 @@ export function LevelResultScreen({
   partnerCosmetic,
   onNextLevel,
   onReplay,
+  onOpenArcade,
   onBackToLobby,
 }: LevelResultScreenProps) {
   const meta = getLevelMeta(outcome.levelId);
+  const arcadeMeta = outcome.arcade ? getArcadeGameEntry(outcome.arcade.gameId) : null;
+  const arcadeBest = outcome.arcade
+    ? progression.arcadeRecords?.[outcome.arcade.gameId]
+    : undefined;
   const duoLevel = getPlayerLevelFromXp(progression.xp);
-  const isFinalLevel = outcome.levelId === 5;
+  const isFinalLevel = !outcome.arcade && outcome.levelId === 5;
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-4 py-2">
@@ -56,10 +63,16 @@ export function LevelResultScreen({
 
         <div>
           <p className="text-xs font-extrabold uppercase tracking-widest text-[#9B8CFF]">
-            Level {meta.id} • {meta.name}
+            {arcadeMeta && outcome.arcade
+              ? `Arcade • ${arcadeMeta.name} (${outcome.arcade.difficulty.toUpperCase()})`
+              : `Level ${meta.id} • ${meta.name}`}
           </p>
           <h1 className="font-display mt-1 text-3xl font-extrabold text-[#4A355A]">
-            {isFinalLevel ? 'Cozy Room Complete!' : 'Level Complete!'}
+            {isFinalLevel
+              ? 'Cozy Room Complete!'
+              : arcadeMeta
+                ? 'Arcade Cleared!'
+                : 'Level Complete!'}
           </h1>
         </div>
 
@@ -136,7 +149,13 @@ export function LevelResultScreen({
         <div className="rounded-2xl bg-[#F7F3FF] px-4 py-2.5 text-xs font-bold text-[#4A355A]">
           <Sparkles className="mr-1 inline h-4 w-4 text-[#F5A524]" aria-hidden="true" />
           Duo Level {duoLevel} ({progression.xp} Total XP)
-          {outcome.unlockedNextLevel && (
+          {outcome.arcade && (
+            <span>
+              {' '}
+              • Score: {outcome.arcade.score} (Best: {arcadeBest?.bestScore ?? outcome.arcade.score})
+            </span>
+          )}
+          {!outcome.arcade && outcome.unlockedNextLevel && (
             <span> • Level {outcome.unlockedNextLevel} Unlocked!</span>
           )}
         </div>
@@ -145,7 +164,7 @@ export function LevelResultScreen({
         <div className="space-y-2.5 pt-1">
           {role === 'host' ? (
             <>
-              {outcome.unlockedNextLevel && (
+              {!outcome.arcade && outcome.unlockedNextLevel && (
                 <CuteButton
                   variant="pink"
                   size="lg"
@@ -153,6 +172,17 @@ export function LevelResultScreen({
                   onClick={() => onNextLevel(outcome.unlockedNextLevel as LevelId)}
                 >
                   Next Level ({outcome.unlockedNextLevel})
+                  <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                </CuteButton>
+              )}
+              {outcome.arcade && onOpenArcade && (
+                <CuteButton
+                  variant="pink"
+                  size="lg"
+                  fullWidth
+                  onClick={onOpenArcade}
+                >
+                  More Arcade Games
                   <ArrowRight className="h-5 w-5" aria-hidden="true" />
                 </CuteButton>
               )}

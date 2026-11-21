@@ -17,27 +17,36 @@ public/
   assets/
     characters/      # Canonical boy & girl SVGs + expressions
     backgrounds/     # Cozy Room backdrop & soft cloud pattern SVGs
-    props/           # Cozy sofa, key, chest, plant, heart lock SVGs
-    icons/           # Star, heart, trophy, sound, settings kawaii SVGs
+    props/           # Cozy sofa, key, chest, plant & 8 potion bottle SVGs
+    icons/           # Star, heart, trophy, sound, settings & 13 mini-game kawaii SVGs
     effects/         # Sparkle burst & confetti SVGs
 src/
-  game-engine/       # Pure TypeScript: puzzle configs, mini-game engines, scoring, BFS maze verifier
+  game-engine/       # Pure TypeScript: campaign puzzles/engines, arcade registry & dispatcher, scoring
   multiplayer/
-    protocol.ts      # Versioned Zod schemas + typed multiplayer events
-    signaling/       # SignalingProvider interface + LocalDevHttp + BroadcastChannel + Supabase adapters
-    webrtc/          # PeerConnection wrapper, DataChannel transport, heartbeat & reconnect manager
+    protocol.ts      # Versioned Zod schemas (all 13 game actions & sanitized snapshots)
+    peerjs/          # PeerJSTransport (PeerJS Cloud / custom PeerServer P2P DataConnection)
+    signaling/       # SignalingProvider interface + LocalDevHttp + BroadcastChannel adapters
+    webrtc/          # WebRTCTransport wrapper, DataChannel transport, heartbeat & reconnect manager
   features/
-    room/            # Room create/join/lobby state orchestration & React hook
-    progression/     # XP, star calculation, unlock logic, localStorage persistence, peer reconciliation
+    room/            # Room create/join/lobby state orchestration, host simulation tickers & React hook
+    progression/     # XP, star calculation, Campaign unlocks, backward-compatible Arcade records
     settings/        # Sound effects (Web Audio API gentle chimes), reduced motion, persisted prefs
   games/
-    memory-sync/     # Player A clue view + Player B sequence pad
-    secret-language/ # Player A coded message + Player B decoder table & input
-    lost-together/   # Player A full map + Player B 3x3 fog-of-war + D-pad
-    shape-it/        # Player A target blueprint + Player B snap grid & tray
-    mixed-challenge/ # Composes Secret Language (Stage 1) -> Lost Together (Stage 2)
-  components/        # Reusable UI primitives (CuteButton, PastelCard, AssetIcon, CharacterAvatar, ConnectionPill, Modals)
-  screens/           # 8 top-level screens matching ANTIGRAVITY_PROMPT.md §8
+    memory-sync/         # Level 1: Player A preview + Player B sequence pad
+    secret-language/     # Level 2: Player A coded message + Player B decoder table
+    lost-together/       # Level 3: Player A map + Player B 3x3 fog D-pad
+    shape-it/            # Level 4: Player A blueprint + Player B snap polyominoes
+    mixed-challenge/     # Level 5: Composes Secret Language -> Lost Together
+    rhythm-duo/          # Game 06: Split beat tracks A & B
+    power-connection/    # Game 07: Circuit blueprint vs rotatable wire tiles
+    dont-press-together/ # Game 08: Split switch/color panels & hazard manual
+    potion-lab/          # Game 09: Secret recipe vs decoy bottle shelf
+    mirror-moves/        # Game 10: Linked twin boards A & B
+    draw-my-mind/        # Game 11: Alternating live canvas drawing & word guessing
+    bridge-builder/      # Game 12: Blueprint vs budgeted bridge span placement
+    balloon-rescue/      # Game 13: Split horizontal steer A & vertical lift B simulation
+  components/        # Reusable UI primitives
+  screens/           # 9 top-level screens (Landing, Create, Join, Lobby, WorldSelect, ArcadeSelect, MiniGame, Result, SettingsHelp)
 vite-plugin-local-signal.ts  # Dev-only SSE+POST local signaling relay (zero external services needed)
 ```
 
